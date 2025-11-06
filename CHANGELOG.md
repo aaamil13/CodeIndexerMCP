@@ -5,17 +5,44 @@ All notable changes to CodeIndexerMCP will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Change Tracking & Impact Analysis** (Link State):
+  - Simulate code changes before applying them
+  - Analyze impact of deleting, renaming, or modifying symbols
+  - Track broken references and validation errors
+  - Generate auto-fix suggestions for safe refactorings
+  - Dependency graph visualization with coupling scores
+  - Identify all affected code when making changes
+
+- **New Change Tracking MCP Tools**:
+  - `simulate_change`: Simulate a change and see its impact (affected files, broken refs, auto-fixes)
+  - `build_dependency_graph`: Build dependency graph showing what depends on what
+  - `get_symbol_dependencies`: Get all symbols a given symbol depends on
+  - `get_symbol_dependents`: Get all symbols that depend on a given symbol
+
+- **AI-Powered Analysis Tools** (7 new MCP tools):
+  - `get_code_context`: Comprehensive context with usage examples and relationships
+  - `analyze_change_impact`: Analyze refactoring impact with risk assessment
+  - `get_code_metrics`: Calculate complexity and maintainability metrics
+  - `extract_smart_snippet`: Extract self-contained code with dependencies
+  - `get_usage_statistics`: Get detailed usage patterns and statistics
+  - `suggest_refactorings`: AI-powered refactoring suggestions
+  - `find_unused_symbols`: Find dead/unused code
+
 - **File Watcher**: Real-time file monitoring with fsnotify
   - Auto-indexes modified files
   - Handles file creation, modification, and deletion
   - Debouncing to avoid rapid re-indexing
   - Watch command: `code-indexer watch`
 
-- **New MCP Tools**:
-  - `get_symbol_details`: Get detailed symbol information with references and relationships
-  - `find_references`: Find all references to a symbol across the codebase
+- **Core MCP Tools** (8 tools):
+  - `search_symbols`: Search for symbols with filters
+  - `get_file_structure`: Get structure of a file
+  - `get_project_overview`: Get project statistics
+  - `index_project`: Trigger full re-index
+  - `get_symbol_details`: Get detailed symbol information
+  - `find_references`: Find all symbol references
   - `get_dependencies`: Analyze file dependencies
-  - `list_files`: List all indexed files with optional language filter
+  - `list_files`: List all indexed files
 
 - **Python Parser**: Regex-based Python code parser
   - Detects classes, functions, methods, variables, constants
@@ -26,6 +53,15 @@ All notable changes to CodeIndexerMCP will be documented in this file.
   - Visibility detection (_private, __internal)
 
 ### Enhanced
+- **AI Analysis Modules**:
+  - Context Extractor: Comprehensive context extraction with usage examples
+  - Impact Analyzer: Change impact analysis with risk levels (low/medium/high)
+  - Metrics Calculator: Cyclomatic complexity, cognitive complexity, maintainability index
+  - Snippet Extractor: Smart code extraction with dependency resolution
+  - Usage Analyzer: Usage patterns, deprecated symbols, common patterns
+  - Change Tracker: Simulate changes, validate, generate auto-fixes
+  - Dependency Graph Builder: Build and analyze dependency graphs
+
 - Database queries extended with:
   - `GetSymbolByName`: Find symbols by name
   - `GetSymbolWithFile`: Get symbol with file information
@@ -40,10 +76,18 @@ All notable changes to CodeIndexerMCP will be documented in this file.
   - `FindReferences()`: Reference finding API
   - `GetDependencies()`: Dependency analysis API
   - `GetAllFiles()`: File listing API
+  - `SimulateSymbolChange()`: Simulate changes
+  - `ValidateChanges()`: Validate changesets
+  - `BuildDependencyGraph()`: Build dependency graphs
+  - `GetSymbolDependencies()`: Get dependencies
+  - `GetSymbolDependents()`: Get dependents
 
 ### Changed
 - CLI now supports `watch` command for real-time monitoring
-- MCP server now exposes 8 tools (was 4)
+- MCP server now exposes **19 tools** (was 4):
+  - 8 core tools
+  - 7 AI-powered tools
+  - 4 change tracking tools
 
 ## [0.1.0] - 2024-11-06
 

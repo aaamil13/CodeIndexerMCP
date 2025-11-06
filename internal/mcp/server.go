@@ -449,6 +449,83 @@ func (s *Server) registerTools() {
 		},
 		Handler: s.handleFindUnusedSymbols,
 	})
+
+	// Change tracking tools
+	s.registerTool(&Tool{
+		Name:        "simulate_change",
+		Description: "Simulate a code change and see its impact before applying it (shows affected files, broken references, auto-fix suggestions)",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"symbol_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the symbol to change",
+				},
+				"change_type": map[string]interface{}{
+					"type":        "string",
+					"description": "Type of change: add, modify, delete, rename, move",
+				},
+				"new_value": map[string]interface{}{
+					"type":        "string",
+					"description": "New value (e.g., new name for rename, new signature for modify)",
+				},
+			},
+			"required": []string{"symbol_name", "change_type"},
+		},
+		Handler: s.handleSimulateChange,
+	})
+
+	s.registerTool(&Tool{
+		Name:        "build_dependency_graph",
+		Description: "Build a dependency graph for a symbol showing what it depends on and what depends on it",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"symbol_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the symbol",
+				},
+				"max_depth": map[string]interface{}{
+					"type":        "number",
+					"description": "Maximum depth to traverse (default: 3)",
+				},
+			},
+			"required": []string{"symbol_name"},
+		},
+		Handler: s.handleBuildDependencyGraph,
+	})
+
+	s.registerTool(&Tool{
+		Name:        "get_symbol_dependencies",
+		Description: "Get all symbols that a given symbol depends on",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"symbol_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the symbol",
+				},
+			},
+			"required": []string{"symbol_name"},
+		},
+		Handler: s.handleGetSymbolDependencies,
+	})
+
+	s.registerTool(&Tool{
+		Name:        "get_symbol_dependents",
+		Description: "Get all symbols that depend on a given symbol",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"symbol_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the symbol",
+				},
+			},
+			"required": []string{"symbol_name"},
+		},
+		Handler: s.handleGetSymbolDependents,
+	})
 }
 
 // registerTool registers a tool
@@ -721,5 +798,126 @@ func (s *Server) handleFindUnusedSymbols(params json.RawMessage) (interface{}, e
 		"unused_symbols": unused,
 		"count":          len(unused),
 		"suggestion":     "These symbols may be candidates for removal or refactoring",
+	}, nil
+}
+
+// Change tracking tool handlers
+
+func (s *Server) handleSimulateChange(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		SymbolName string `json:"symbol_name"`
+		ChangeType string `json:"change_type"`
+		NewValue   string `json:"new_value"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	// Parse change type
+	var changeType types.ChangeType
+	switch req.ChangeType {
+	case "add":
+		changeType = types.ChangeTypeAdd
+	case "modify":
+		changeType = types.ChangeTypeModify
+	case "delete":
+		changeType = types.ChangeTypeDelete
+	case "rename":
+		changeType = types.ChangeTypeRename
+	case "move":
+		changeType = types.ChangeTypeMove
+	default:
+		return nil, fmt.Errorf("invalid change type: %s (must be: add, modify, delete, rename, move)", req.ChangeType)
+	}
+
+	impact, err := s.indexer.SimulateSymbolChange(req.SymbolName, changeType, req.NewValue)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"symbol":               req.SymbolName,
+		"change_type":          req.ChangeType,
+		"new_value":            req.NewValue,
+		"affected_symbols":     len(impact.AffectedSymbols),
+		"broken_references":    len(impact.BrokenReferences),
+		"required_updates":     len(impact.RequiredUpdates),
+		"validation_errors":    len(impact.ValidationErrors),
+		"auto_fix_suggestions": len(impact.AutoFixSuggestions),
+		"can_auto_fix":         impact.CanAutoFix,
+		"details":              impact,
+	}, nil
+}
+
+func (s *Server) handleBuildDependencyGraph(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		SymbolName string `json:"symbol_name"`
+		MaxDepth   int    `json:"max_depth"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	if req.MaxDepth == 0 {
+		req.MaxDepth = 3 // Default depth
+	}
+
+	graph, err := s.indexer.BuildDependencyGraph(req.SymbolName, req.MaxDepth)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"symbol":            req.SymbolName,
+		"total_nodes":       len(graph.Nodes),
+		"total_edges":       len(graph.Edges),
+		"direct_deps":       len(graph.DirectDependencies),
+		"direct_dependents": len(graph.DirectDependents),
+		"coupling_score":    graph.CouplingScore,
+		"graph":             graph,
+	}, nil
+}
+
+func (s *Server) handleGetSymbolDependencies(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		SymbolName string `json:"symbol_name"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	dependencies, err := s.indexer.GetSymbolDependencies(req.SymbolName)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"symbol":       req.SymbolName,
+		"dependencies": dependencies,
+		"count":        len(dependencies),
+	}, nil
+}
+
+func (s *Server) handleGetSymbolDependents(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		SymbolName string `json:"symbol_name"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	dependents, err := s.indexer.GetSymbolDependents(req.SymbolName)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"symbol":     req.SymbolName,
+		"dependents": dependents,
+		"count":      len(dependents),
 	}, nil
 }

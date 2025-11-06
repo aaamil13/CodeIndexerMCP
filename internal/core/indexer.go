@@ -33,6 +33,8 @@ type Indexer struct {
 	metricsCalc      *ai.MetricsCalculator
 	snippetExtractor *ai.SnippetExtractor
 	usageAnalyzer    *ai.UsageAnalyzer
+	changeTracker    *ai.ChangeTracker
+	depGraphBuilder  *ai.DependencyGraphBuilder
 }
 
 // Config holds indexer configuration
@@ -134,6 +136,8 @@ func (idx *Indexer) Initialize() error {
 	idx.metricsCalc = ai.NewMetricsCalculator(idx.db)
 	idx.snippetExtractor = ai.NewSnippetExtractor(idx.db)
 	idx.usageAnalyzer = ai.NewUsageAnalyzer(idx.db)
+	idx.changeTracker = ai.NewChangeTracker(idx.db)
+	idx.depGraphBuilder = ai.NewDependencyGraphBuilder(idx.db)
 
 	return nil
 }
@@ -591,4 +595,43 @@ func (idx *Indexer) FindUnusedSymbols() ([]*types.Symbol, error) {
 // FindMostUsedSymbols finds the most used symbols
 func (idx *Indexer) FindMostUsedSymbols(limit int) ([]*types.SymbolUsageStats, error) {
 	return idx.usageAnalyzer.FindMostUsedSymbols(idx.project.ID, limit)
+}
+
+// Change Tracking Methods
+
+// SimulateSymbolChange simulates a change without applying it
+func (idx *Indexer) SimulateSymbolChange(symbolName string, changeType types.ChangeType, newValue string) (*types.ChangeImpactResult, error) {
+	return idx.changeTracker.SimulateChange(symbolName, changeType, newValue)
+}
+
+// ValidateChanges validates a set of changes
+func (idx *Indexer) ValidateChanges(changes []*types.Change) (*types.ValidationResult, error) {
+	return idx.changeTracker.ValidateChanges(changes)
+}
+
+// GenerateAutoFixes generates automatic fixes for a change
+func (idx *Indexer) GenerateAutoFixes(change *types.Change) ([]*types.AutoFixSuggestion, error) {
+	return idx.changeTracker.GenerateAutoFixes(change)
+}
+
+// Dependency Graph Methods
+
+// BuildDependencyGraph builds a dependency graph for a symbol
+func (idx *Indexer) BuildDependencyGraph(symbolName string, maxDepth int) (*types.DependencyGraph, error) {
+	return idx.depGraphBuilder.BuildSymbolDependencyGraph(symbolName, maxDepth)
+}
+
+// GetDependencies gets all dependencies for a symbol
+func (idx *Indexer) GetDependencies(symbolName string) ([]*types.Symbol, error) {
+	return idx.depGraphBuilder.GetDependenciesFor(symbolName)
+}
+
+// GetDependents gets all symbols that depend on a symbol
+func (idx *Indexer) GetDependents(symbolName string) ([]*types.Symbol, error) {
+	return idx.depGraphBuilder.GetDependentsFor(symbolName)
+}
+
+// AnalyzeDependencyChain analyzes the full dependency chain
+func (idx *Indexer) AnalyzeDependencyChain(symbolName string) (map[string]interface{}, error) {
+	return idx.depGraphBuilder.AnalyzeDependencyChain(symbolName)
 }
