@@ -33,13 +33,6 @@ type SymbolDetails struct {
 	Documentation string        `json:"documentation,omitempty"`
 }
 
-// DependencyGraph represents a dependency graph
-type DependencyGraph struct {
-	Root         string              `json:"root"`
-	Dependencies map[string][]string `json:"dependencies"` // file -> [dependencies]
-	Imports      []*Import           `json:"imports"`
-}
-
 // ComplexityMetrics contains code complexity metrics
 type ComplexityMetrics struct {
 	FilePath              string  `json:"file_path"`
