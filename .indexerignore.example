@@ -1,0 +1,32 @@
+# Example .indexerignore file
+# Add patterns for files/directories to exclude from indexing
+
+# Dependencies
+node_modules/
+vendor/
+venv/
+
+# Build output
+dist/
+build/
+target/
+out/
+
+# Tests
+*.test.go
+*_test.py
+test/
+tests/
+
+# Generated files
+*.generated.go
+*.pb.go
+
+# Documentation
+docs/
+*.md
+
+# Config files
+*.json
+*.yaml
+*.toml
