@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/ai"
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/golang"
@@ -18,14 +19,20 @@ import (
 
 // Indexer is the main code indexer
 type Indexer struct {
-	projectPath   string
-	db            *database.DB
-	parsers       *parser.Registry
-	ignoreMatcher *utils.IgnoreMatcher
-	project       *types.Project
-	logger        *utils.Logger
-	config        *Config
-	watcher       *Watcher
+	projectPath      string
+	db               *database.DB
+	parsers          *parser.Registry
+	ignoreMatcher    *utils.IgnoreMatcher
+	project          *types.Project
+	logger           *utils.Logger
+	config           *Config
+	watcher          *Watcher
+	// AI helpers
+	contextExtractor *ai.ContextExtractor
+	impactAnalyzer   *ai.ImpactAnalyzer
+	metricsCalc      *ai.MetricsCalculator
+	snippetExtractor *ai.SnippetExtractor
+	usageAnalyzer    *ai.UsageAnalyzer
 }
 
 // Config holds indexer configuration
@@ -120,6 +127,13 @@ func (idx *Indexer) Initialize() error {
 	}
 
 	idx.project = project
+
+	// Initialize AI helpers
+	idx.contextExtractor = ai.NewContextExtractor(idx.db)
+	idx.impactAnalyzer = ai.NewImpactAnalyzer(idx.db)
+	idx.metricsCalc = ai.NewMetricsCalculator(idx.db)
+	idx.snippetExtractor = ai.NewSnippetExtractor(idx.db)
+	idx.usageAnalyzer = ai.NewUsageAnalyzer(idx.db)
 
 	return nil
 }
@@ -535,4 +549,46 @@ func (idx *Indexer) GetDependencies(filePath string) (*types.DependencyGraph, er
 // GetAllFiles returns all indexed files
 func (idx *Indexer) GetAllFiles() ([]*types.File, error) {
 	return idx.db.GetAllFilesForProject(idx.project.ID)
+}
+
+// AI Helper Methods
+
+// GetCodeContext extracts comprehensive context for a symbol
+func (idx *Indexer) GetCodeContext(symbolName string, depth int) (*types.CodeContext, error) {
+	return idx.contextExtractor.ExtractContext(symbolName, depth)
+}
+
+// AnalyzeChangeImpact analyzes the impact of changing a symbol
+func (idx *Indexer) AnalyzeChangeImpact(symbolName string) (*types.ChangeImpact, error) {
+	return idx.impactAnalyzer.AnalyzeChangeImpact(symbolName)
+}
+
+// GetCodeMetrics calculates code quality metrics
+func (idx *Indexer) GetCodeMetrics(symbolName string) (*types.CodeMetrics, error) {
+	return idx.metricsCalc.CalculateMetrics(symbolName)
+}
+
+// ExtractSmartSnippet extracts a self-contained code snippet
+func (idx *Indexer) ExtractSmartSnippet(symbolName string) (*types.SmartSnippet, error) {
+	return idx.snippetExtractor.ExtractSmartSnippet(symbolName, false)
+}
+
+// GetUsageStatistics gets usage statistics for a symbol
+func (idx *Indexer) GetUsageStatistics(symbolName string) (*types.SymbolUsageStats, error) {
+	return idx.usageAnalyzer.AnalyzeUsage(symbolName)
+}
+
+// SuggestRefactorings suggests refactoring opportunities
+func (idx *Indexer) SuggestRefactorings(symbolName string) ([]*types.RefactoringOpportunity, error) {
+	return idx.impactAnalyzer.SuggestRefactorings(symbolName)
+}
+
+// FindUnusedSymbols finds unused symbols in the project
+func (idx *Indexer) FindUnusedSymbols() ([]*types.Symbol, error) {
+	return idx.usageAnalyzer.FindUnusedSymbols(idx.project.ID)
+}
+
+// FindMostUsedSymbols finds the most used symbols
+func (idx *Indexer) FindMostUsedSymbols(limit int) ([]*types.SymbolUsageStats, error) {
+	return idx.usageAnalyzer.FindMostUsedSymbols(idx.project.ID, limit)
 }

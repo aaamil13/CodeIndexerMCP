@@ -338,6 +338,117 @@ func (s *Server) registerTools() {
 		},
 		Handler: s.handleListFiles,
 	})
+
+	// AI-powered tools
+	s.registerTool(&Tool{
+		Name:        "get_code_context",
+		Description: "Get comprehensive context for a symbol including usage examples, dependencies, and relationships",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"symbol_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the symbol",
+				},
+				"depth": map[string]interface{}{
+					"type":        "number",
+					"description": "Context depth (number of usage examples, default: 5)",
+				},
+			},
+			"required": []string{"symbol_name"},
+		},
+		Handler: s.handleGetCodeContext,
+	})
+
+	s.registerTool(&Tool{
+		Name:        "analyze_change_impact",
+		Description: "Analyze the impact of changing or refactoring a symbol (risk level, affected files, suggestions)",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"symbol_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the symbol to analyze",
+				},
+			},
+			"required": []string{"symbol_name"},
+		},
+		Handler: s.handleAnalyzeChangeImpact,
+	})
+
+	s.registerTool(&Tool{
+		Name:        "get_code_metrics",
+		Description: "Calculate code quality metrics (complexity, maintainability, quality rating)",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"symbol_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the symbol (function/method)",
+				},
+			},
+			"required": []string{"symbol_name"},
+		},
+		Handler: s.handleGetCodeMetrics,
+	})
+
+	s.registerTool(&Tool{
+		Name:        "extract_smart_snippet",
+		Description: "Extract a self-contained code snippet with all dependencies and usage hints",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"symbol_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the symbol to extract",
+				},
+			},
+			"required": []string{"symbol_name"},
+		},
+		Handler: s.handleExtractSmartSnippet,
+	})
+
+	s.registerTool(&Tool{
+		Name:        "get_usage_statistics",
+		Description: "Get detailed usage statistics for a symbol (usage count, patterns, files)",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"symbol_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the symbol",
+				},
+			},
+			"required": []string{"symbol_name"},
+		},
+		Handler: s.handleGetUsageStatistics,
+	})
+
+	s.registerTool(&Tool{
+		Name:        "suggest_refactorings",
+		Description: "Get AI-powered refactoring suggestions for a symbol",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"symbol_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the symbol",
+				},
+			},
+			"required": []string{"symbol_name"},
+		},
+		Handler: s.handleSuggestRefactorings,
+	})
+
+	s.registerTool(&Tool{
+		Name:        "find_unused_symbols",
+		Description: "Find unused/dead code in the project",
+		InputSchema: map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+		},
+		Handler: s.handleFindUnusedSymbols,
+	})
 }
 
 // registerTool registers a tool
@@ -484,5 +595,131 @@ func (s *Server) handleListFiles(params json.RawMessage) (interface{}, error) {
 	return map[string]interface{}{
 		"files": files,
 		"count": len(files),
+	}, nil
+}
+
+// AI-powered tool handlers
+
+func (s *Server) handleGetCodeContext(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		SymbolName string `json:"symbol_name"`
+		Depth      int    `json:"depth"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	if req.Depth == 0 {
+		req.Depth = 5 // Default depth
+	}
+
+	context, err := s.indexer.GetCodeContext(req.SymbolName, req.Depth)
+	if err != nil {
+		return nil, err
+	}
+
+	return context, nil
+}
+
+func (s *Server) handleAnalyzeChangeImpact(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		SymbolName string `json:"symbol_name"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	impact, err := s.indexer.AnalyzeChangeImpact(req.SymbolName)
+	if err != nil {
+		return nil, err
+	}
+
+	return impact, nil
+}
+
+func (s *Server) handleGetCodeMetrics(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		SymbolName string `json:"symbol_name"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	metrics, err := s.indexer.GetCodeMetrics(req.SymbolName)
+	if err != nil {
+		return nil, err
+	}
+
+	return metrics, nil
+}
+
+func (s *Server) handleExtractSmartSnippet(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		SymbolName string `json:"symbol_name"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	snippet, err := s.indexer.ExtractSmartSnippet(req.SymbolName)
+	if err != nil {
+		return nil, err
+	}
+
+	return snippet, nil
+}
+
+func (s *Server) handleGetUsageStatistics(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		SymbolName string `json:"symbol_name"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	stats, err := s.indexer.GetUsageStatistics(req.SymbolName)
+	if err != nil {
+		return nil, err
+	}
+
+	return stats, nil
+}
+
+func (s *Server) handleSuggestRefactorings(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		SymbolName string `json:"symbol_name"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	suggestions, err := s.indexer.SuggestRefactorings(req.SymbolName)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"symbol":        req.SymbolName,
+		"opportunities": suggestions,
+		"count":         len(suggestions),
+	}, nil
+}
+
+func (s *Server) handleFindUnusedSymbols(params json.RawMessage) (interface{}, error) {
+	unused, err := s.indexer.FindUnusedSymbols()
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"unused_symbols": unused,
+		"count":          len(unused),
+		"suggestion":     "These symbols may be candidates for removal or refactoring",
 	}, nil
 }
