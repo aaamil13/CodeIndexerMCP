@@ -11,19 +11,21 @@ import (
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/golang"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/python"
 	"github.com/aaamil13/CodeIndexerMCP/internal/utils"
 	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
 
 // Indexer is the main code indexer
 type Indexer struct {
-	projectPath string
-	db          *database.DB
-	parsers     *parser.Registry
+	projectPath   string
+	db            *database.DB
+	parsers       *parser.Registry
 	ignoreMatcher *utils.IgnoreMatcher
-	project     *types.Project
-	logger      *utils.Logger
-	config      *Config
+	project       *types.Project
+	logger        *utils.Logger
+	config        *Config
+	watcher       *Watcher
 }
 
 // Config holds indexer configuration
@@ -52,6 +54,9 @@ func NewIndexer(projectPath string, cfg *Config) (*Indexer, error) {
 	// Register built-in parsers
 	if err := reg.Register(golang.NewParser()); err != nil {
 		return nil, fmt.Errorf("failed to register Go parser: %w", err)
+	}
+	if err := reg.Register(python.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register Python parser: %w", err)
 	}
 
 	// Initialize ignore matcher
@@ -411,4 +416,123 @@ func (idx *Indexer) GetProjectOverview() (*types.ProjectOverview, error) {
 		TotalSymbols:  stats["symbols"],
 		LanguageStats: idx.project.LanguageStats,
 	}, nil
+}
+
+// Watch starts watching for file changes and auto-indexes
+func (idx *Indexer) Watch() error {
+	if idx.watcher != nil {
+		return fmt.Errorf("watcher already started")
+	}
+
+	watcher, err := NewWatcher(idx)
+	if err != nil {
+		return fmt.Errorf("failed to create watcher: %w", err)
+	}
+
+	idx.watcher = watcher
+
+	if err := watcher.Start(); err != nil {
+		return fmt.Errorf("failed to start watcher: %w", err)
+	}
+
+	idx.logger.Info("File watching started")
+	return nil
+}
+
+// StopWatch stops the file watcher
+func (idx *Indexer) StopWatch() error {
+	if idx.watcher == nil {
+		return nil
+	}
+
+	err := idx.watcher.Stop()
+	idx.watcher = nil
+	return err
+}
+
+// GetSymbolDetails returns detailed information about a symbol
+func (idx *Indexer) GetSymbolDetails(symbolName string) (*types.SymbolDetails, error) {
+	symbol, err := idx.db.GetSymbolByName(symbolName)
+	if err != nil {
+		return nil, err
+	}
+	if symbol == nil {
+		return nil, fmt.Errorf("symbol not found: %s", symbolName)
+	}
+
+	file, err := idx.db.GetFile(symbol.FileID)
+	if err != nil {
+		return nil, err
+	}
+
+	references, err := idx.db.GetReferencesBySymbol(symbol.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	relationships, err := idx.db.GetRelationshipsForSymbol(symbol.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.SymbolDetails{
+		Symbol:        symbol,
+		File:          file,
+		References:    references,
+		Relationships: relationships,
+		Documentation: symbol.Documentation,
+	}, nil
+}
+
+// FindReferences finds all references to a symbol
+func (idx *Indexer) FindReferences(symbolName string) ([]*types.Reference, error) {
+	symbol, err := idx.db.GetSymbolByName(symbolName)
+	if err != nil {
+		return nil, err
+	}
+	if symbol == nil {
+		return nil, fmt.Errorf("symbol not found: %s", symbolName)
+	}
+
+	return idx.db.GetReferencesBySymbol(symbol.ID)
+}
+
+// GetDependencies returns dependencies for a file
+func (idx *Indexer) GetDependencies(filePath string) (*types.DependencyGraph, error) {
+	relPath, err := filepath.Rel(idx.projectPath, filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	file, err := idx.db.GetFileByPath(idx.project.ID, relPath)
+	if err != nil {
+		return nil, err
+	}
+	if file == nil {
+		return nil, fmt.Errorf("file not found: %s", relPath)
+	}
+
+	imports, err := idx.db.GetImportsByFile(file.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build dependency graph
+	deps := make(map[string][]string)
+	deps[relPath] = []string{}
+
+	for _, imp := range imports {
+		deps[relPath] = append(deps[relPath], imp.Source)
+	}
+
+	return &types.DependencyGraph{
+		Root:         relPath,
+		Dependencies: deps,
+		Imports:      imports,
+	}, nil
+}
+
+// GetAllFiles returns all indexed files
+func (idx *Indexer) GetAllFiles() ([]*types.File, error) {
+	return idx.db.GetAllFilesForProject(idx.project.ID)
 }

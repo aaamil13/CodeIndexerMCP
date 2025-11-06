@@ -44,6 +44,8 @@ func run() error {
 	switch command {
 	case "index":
 		return runIndex(absPath)
+	case "watch":
+		return runWatch(absPath)
 	case "mcp":
 		return runMCP(absPath)
 	case "search":
@@ -81,6 +83,48 @@ func runIndex(projectPath string) error {
 	}
 
 	fmt.Println("✅ Indexing completed successfully!")
+	return nil
+}
+
+func runWatch(projectPath string) error {
+	fmt.Println("🔍 Code Indexer - Watch Mode")
+	fmt.Println("Project:", projectPath)
+
+	indexer, err := core.NewIndexer(projectPath, nil)
+	if err != nil {
+		return err
+	}
+	defer indexer.Close()
+
+	if err := indexer.Initialize(); err != nil {
+		return err
+	}
+
+	// Initial index
+	fmt.Println("Performing initial index...")
+	if err := indexer.IndexAll(); err != nil {
+		return err
+	}
+	fmt.Println("✅ Initial indexing complete")
+
+	// Start watching
+	fmt.Println("👀 Watching for file changes... (Press Ctrl+C to stop)")
+	if err := indexer.Watch(); err != nil {
+		return err
+	}
+
+	// Handle signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	<-sigChan
+	fmt.Println("\n🛑 Stopping watcher...")
+
+	if err := indexer.StopWatch(); err != nil {
+		return err
+	}
+
+	fmt.Println("✅ Watcher stopped")
 	return nil
 }
 
@@ -215,6 +259,7 @@ Usage:
 
 Commands:
   index [path]      Index the project at the given path (default: current directory)
+  watch [path]      Watch for file changes and auto-index (default: current directory)
   mcp [path]        Start MCP server for the project
   search <query>    Search for symbols in the project
   overview [path]   Show project overview and statistics
@@ -222,6 +267,7 @@ Commands:
 
 Examples:
   code-indexer index .
+  code-indexer watch /path/to/project
   code-indexer mcp /path/to/project
   code-indexer search "MyFunction"
   code-indexer overview

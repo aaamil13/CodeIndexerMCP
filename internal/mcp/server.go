@@ -275,6 +275,69 @@ func (s *Server) registerTools() {
 		},
 		Handler: s.handleIndexProject,
 	})
+
+	s.registerTool(&Tool{
+		Name:        "get_symbol_details",
+		Description: "Get detailed information about a specific symbol (including references and relationships)",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"symbol_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the symbol",
+				},
+			},
+			"required": []string{"symbol_name"},
+		},
+		Handler: s.handleGetSymbolDetails,
+	})
+
+	s.registerTool(&Tool{
+		Name:        "find_references",
+		Description: "Find all references to a symbol in the codebase",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"symbol_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the symbol to find references for",
+				},
+			},
+			"required": []string{"symbol_name"},
+		},
+		Handler: s.handleFindReferences,
+	})
+
+	s.registerTool(&Tool{
+		Name:        "get_dependencies",
+		Description: "Get dependencies for a specific file",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"file_path": map[string]interface{}{
+					"type":        "string",
+					"description": "Path to the file (relative or absolute)",
+				},
+			},
+			"required": []string{"file_path"},
+		},
+		Handler: s.handleGetDependencies,
+	})
+
+	s.registerTool(&Tool{
+		Name:        "list_files",
+		Description: "List all indexed files in the project",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"language": map[string]interface{}{
+					"type":        "string",
+					"description": "Filter by language (optional)",
+				},
+			},
+		},
+		Handler: s.handleListFiles,
+	})
 }
 
 // registerTool registers a tool
@@ -335,5 +398,91 @@ func (s *Server) handleIndexProject(params json.RawMessage) (interface{}, error)
 	return map[string]interface{}{
 		"status":  "success",
 		"message": "Project indexed successfully",
+	}, nil
+}
+
+func (s *Server) handleGetSymbolDetails(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		SymbolName string `json:"symbol_name"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	details, err := s.indexer.GetSymbolDetails(req.SymbolName)
+	if err != nil {
+		return nil, err
+	}
+
+	return details, nil
+}
+
+func (s *Server) handleFindReferences(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		SymbolName string `json:"symbol_name"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	references, err := s.indexer.FindReferences(req.SymbolName)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"symbol":     req.SymbolName,
+		"references": references,
+		"count":      len(references),
+	}, nil
+}
+
+func (s *Server) handleGetDependencies(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		FilePath string `json:"file_path"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	deps, err := s.indexer.GetDependencies(req.FilePath)
+	if err != nil {
+		return nil, err
+	}
+
+	return deps, nil
+}
+
+func (s *Server) handleListFiles(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		Language string `json:"language"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	files, err := s.indexer.GetAllFiles()
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter by language if specified
+	if req.Language != "" {
+		filtered := []*types.File{}
+		for _, file := range files {
+			if file.Language == req.Language {
+				filtered = append(filtered, file)
+			}
+		}
+		files = filtered
+	}
+
+	return map[string]interface{}{
+		"files": files,
+		"count": len(files),
 	}, nil
 }

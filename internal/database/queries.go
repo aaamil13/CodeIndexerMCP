@@ -457,3 +457,178 @@ func scanImport(scanner interface {
 
 	return &imp, nil
 }
+
+// GetSymbolByName retrieves a symbol by name
+func (db *DB) GetSymbolByName(name string) (*types.Symbol, error) {
+	query := `
+		SELECT id, file_id, name, type, signature, parent_id,
+			start_line, end_line, start_column, end_column,
+			visibility, is_exported, is_async, is_static, is_abstract,
+			documentation, metadata
+		FROM symbols
+		WHERE name = ?
+		LIMIT 1
+	`
+
+	symbol, err := scanSymbol(db.conn.QueryRow(query, name))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return symbol, err
+}
+
+// GetSymbolWithFile retrieves a symbol with its file information
+func (db *DB) GetSymbolWithFile(symbolID int64) (*types.Symbol, *types.File, error) {
+	query := `
+		SELECT s.id, s.file_id, s.name, s.type, s.signature, s.parent_id,
+			s.start_line, s.end_line, s.start_column, s.end_column,
+			s.visibility, s.is_exported, s.is_async, s.is_static, s.is_abstract,
+			s.documentation, s.metadata,
+			f.id, f.project_id, f.path, f.relative_path, f.language, f.size,
+			f.lines_of_code, f.hash, f.last_modified, f.last_indexed
+		FROM symbols s
+		JOIN files f ON s.file_id = f.id
+		WHERE s.id = ?
+	`
+
+	row := db.conn.QueryRow(query, symbolID)
+
+	var symbol types.Symbol
+	var file types.File
+	var signature, documentation, metadataJSON sql.NullString
+	var parentID sql.NullInt64
+
+	err := row.Scan(
+		&symbol.ID, &symbol.FileID, &symbol.Name, &symbol.Type, &signature, &parentID,
+		&symbol.StartLine, &symbol.EndLine, &symbol.StartColumn, &symbol.EndColumn,
+		&symbol.Visibility, &symbol.IsExported, &symbol.IsAsync, &symbol.IsStatic, &symbol.IsAbstract,
+		&documentation, &metadataJSON,
+		&file.ID, &file.ProjectID, &file.Path, &file.RelativePath, &file.Language, &file.Size,
+		&file.LinesOfCode, &file.Hash, &file.LastModified, &file.LastIndexed,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if signature.Valid {
+		symbol.Signature = signature.String
+	}
+	if parentID.Valid {
+		pid := parentID.Int64
+		symbol.ParentID = &pid
+	}
+	if documentation.Valid {
+		symbol.Documentation = documentation.String
+	}
+	if metadataJSON.Valid {
+		fromJSON(metadataJSON.String, &symbol.Metadata)
+	}
+
+	return &symbol, &file, nil
+}
+
+// GetRelationshipsForSymbol retrieves relationships for a symbol
+func (db *DB) GetRelationshipsForSymbol(symbolID int64) ([]*types.Relationship, error) {
+	query := `
+		SELECT id, from_symbol_id, to_symbol_id, relationship_type
+		FROM relationships
+		WHERE from_symbol_id = ? OR to_symbol_id = ?
+	`
+
+	rows, err := db.conn.Query(query, symbolID, symbolID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var relationships []*types.Relationship
+	for rows.Next() {
+		var rel types.Relationship
+		if err := rows.Scan(&rel.ID, &rel.FromSymbolID, &rel.ToSymbolID, &rel.Type); err != nil {
+			return nil, err
+		}
+		relationships = append(relationships, &rel)
+	}
+
+	return relationships, rows.Err()
+}
+
+// SaveReference creates a reference
+func (db *DB) SaveReference(ref *types.Reference) error {
+	query := `
+		INSERT INTO references (symbol_id, file_id, line_number, column_number, reference_type)
+		VALUES (?, ?, ?, ?, ?)
+		RETURNING id
+	`
+
+	err := db.conn.QueryRow(query,
+		ref.SymbolID,
+		ref.FileID,
+		ref.LineNumber,
+		ref.ColumnNumber,
+		ref.ReferenceType,
+	).Scan(&ref.ID)
+
+	return err
+}
+
+// GetReferencesBySymbol retrieves all references to a symbol
+func (db *DB) GetReferencesBySymbol(symbolID int64) ([]*types.Reference, error) {
+	query := `
+		SELECT id, symbol_id, file_id, line_number, column_number, reference_type
+		FROM references
+		WHERE symbol_id = ?
+	`
+
+	rows, err := db.conn.Query(query, symbolID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var references []*types.Reference
+	for rows.Next() {
+		var ref types.Reference
+		if err := rows.Scan(&ref.ID, &ref.SymbolID, &ref.FileID, &ref.LineNumber, &ref.ColumnNumber, &ref.ReferenceType); err != nil {
+			return nil, err
+		}
+		references = append(references, &ref)
+	}
+
+	return references, rows.Err()
+}
+
+// GetAllFilesForProject retrieves all files in a project
+func (db *DB) GetAllFilesForProject(projectID int64) ([]*types.File, error) {
+	query := `
+		SELECT id, project_id, path, relative_path, language, size, lines_of_code, hash, last_modified, last_indexed
+		FROM files
+		WHERE project_id = ?
+		ORDER BY relative_path
+	`
+
+	rows, err := db.conn.Query(query, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var files []*types.File
+	for rows.Next() {
+		var file types.File
+		if err := rows.Scan(
+			&file.ID, &file.ProjectID, &file.Path, &file.RelativePath,
+			&file.Language, &file.Size, &file.LinesOfCode, &file.Hash,
+			&file.LastModified, &file.LastIndexed,
+		); err != nil {
+			return nil, err
+		}
+		files = append(files, &file)
+	}
+
+	return files, rows.Err()
+}
