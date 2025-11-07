@@ -100,20 +100,18 @@ func (p *CSharpParser) extractUsings(lines []string, result *types.ParseResult) 
 
 	for i, line := range lines {
 		if matches := usingRe.FindStringSubmatch(line); matches != nil {
-			isStatic := matches[1] != ""
-			alias := matches[2]
+			// isStatic := matches[1] != "" // Declared and not used
+			// alias := matches[2] // Declared and not used
 			namespace := matches[3]
 
 			imp := &types.Import{
-				Source: namespace,
-				Line:   i + 1,
+				Source:     namespace,
+				LineNumber: i + 1,
 			}
 
-			if alias != "" {
-				imp.Alias = alias
-			} else if isStatic {
-				imp.Alias = "static"
-			}
+			// Alias field no longer exists in types.Import
+			// If needed, the alias logic would need to be stored elsewhere
+			// or handled differently by the MCP agents.
 
 			result.Imports = append(result.Imports, imp)
 		}
@@ -192,7 +190,7 @@ func (p *CSharpParser) extractTypes(lines []string, content string, result *type
 				// In C#, first is base class, rest are interfaces
 				// We'll just mark all as "extends" for simplicity
 				result.Relationships = append(result.Relationships, &types.Relationship{
-					Type:       types.RelationshipTypeExtends,
+					Type:       types.RelationshipExtends, // Corrected constant name
 					SourceName: name,
 					TargetName: parent,
 				})

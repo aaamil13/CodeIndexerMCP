@@ -57,9 +57,9 @@ func (p *PowerShellParser) extractImports(lines []string, result *types.ParseRes
 		// Import-Module
 		if matches := importModuleRe.FindStringSubmatch(line); matches != nil {
 			imp := &types.Import{
-				Source: matches[1],
-				Line:   i + 1,
-				Alias:  "module",
+				Source:     matches[1],
+				LineNumber: i + 1,
+				// Alias field no longer exists in types.Import
 			}
 			result.Imports = append(result.Imports, imp)
 			continue
@@ -68,8 +68,8 @@ func (p *PowerShellParser) extractImports(lines []string, result *types.ParseRes
 		// using module/namespace
 		if matches := usingRe.FindStringSubmatch(line); matches != nil {
 			imp := &types.Import{
-				Source: matches[1],
-				Line:   i + 1,
+				Source:     matches[1],
+				LineNumber: i + 1,
 			}
 			result.Imports = append(result.Imports, imp)
 		}
@@ -169,7 +169,7 @@ func (p *PowerShellParser) extractClasses(content string, result *types.ParseRes
 				parent = strings.TrimSpace(parent)
 				if parent != "" {
 					result.Relationships = append(result.Relationships, &types.Relationship{
-						Type:       types.RelationshipTypeExtends,
+						Type:       types.RelationshipExtends,
 						SourceName: name,
 						TargetName: parent,
 					})

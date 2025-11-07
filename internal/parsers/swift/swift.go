@@ -58,8 +58,8 @@ func (p *SwiftParser) extractImports(lines []string, result *types.ParseResult) 
 	for i, line := range lines {
 		if matches := importRe.FindStringSubmatch(line); matches != nil {
 			imp := &types.Import{
-				Source: matches[1],
-				Line:   i + 1,
+				Source:     matches[1],
+				LineNumber: i + 1,
 			}
 			result.Imports = append(result.Imports, imp)
 		}
@@ -140,7 +140,7 @@ func (p *SwiftParser) extractTypes(content string, result *types.ParseResult) {
 
 				if part != "" {
 					result.Relationships = append(result.Relationships, &types.Relationship{
-						Type:       types.RelationshipTypeExtends,
+						Type:       types.RelationshipExtends,
 						SourceName: name,
 						TargetName: part,
 					})
@@ -190,7 +190,7 @@ func (p *SwiftParser) extractExtensions(content string, result *types.ParseResul
 				protocol = strings.TrimSpace(protocol)
 				if protocol != "" {
 					result.Relationships = append(result.Relationships, &types.Relationship{
-						Type:       types.RelationshipTypeImplements,
+						Type:       types.RelationshipImplements,
 						SourceName: name,
 						TargetName: protocol,
 					})

@@ -3,7 +3,8 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"time"
+
+	// "time" // Declared and not used
 
 	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
@@ -456,6 +457,23 @@ func scanImport(scanner interface {
 	}
 
 	return &imp, nil
+}
+
+// GetSymbol retrieves a symbol by ID
+func (db *DB) GetSymbol(id int64) (*types.Symbol, error) {
+	query := `
+		SELECT id, file_id, name, type, signature, parent_id,
+			start_line, end_line, start_column, end_column,
+			visibility, is_exported, is_async, is_static, is_abstract,
+			documentation, metadata
+		FROM symbols
+		WHERE id = ?
+	`
+	symbol, err := scanSymbol(db.conn.QueryRow(query, id))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return symbol, err
 }
 
 // GetSymbolByName retrieves a symbol by name

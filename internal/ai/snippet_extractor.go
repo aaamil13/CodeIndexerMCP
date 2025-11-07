@@ -176,7 +176,7 @@ func (se *SnippetExtractor) generateUsageHints(symbol *types.Symbol, language st
 			hints = append(hints, "Import from package to use")
 		}
 	case "python":
-		if symbol.Name == "__init__":
+		if symbol.Name == "__init__" {
 			hints = append(hints, "This is a constructor - called automatically when creating instance")
 		}
 	case "typescript":
@@ -241,4 +241,9 @@ func (se *SnippetExtractor) ExtractWithContext(symbolName string, contextLines i
 	endLine := symbol.EndLine + contextLines
 
 	return se.extractCode(file.Path, startLine, endLine)
+}
+
+func init() {
+	// In production: Load and compile Tree-sitter queries
+	fmt.Println("TypeScript parser initialized (using fallback mode until Tree-sitter is fully integrated)")
 }

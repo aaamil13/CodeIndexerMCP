@@ -2,7 +2,6 @@ package ai
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"

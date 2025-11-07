@@ -127,9 +127,9 @@ func (p *HTMLParser) extractImports(content string, result *types.ParseResult) {
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
 		imp := &types.Import{
-			Source: src,
-			Line:   lineNum,
-			Alias:  "script",
+			Source:     src,
+			LineNumber: lineNum,
+			// Alias field removed
 		}
 
 		result.Imports = append(result.Imports, imp)
@@ -146,9 +146,9 @@ func (p *HTMLParser) extractImports(content string, result *types.ParseResult) {
 		// Only add if it's a stylesheet
 		if strings.Contains(content[match[0]:match[1]], "stylesheet") {
 			imp := &types.Import{
-				Source: href,
-				Line:   lineNum,
-				Alias:  "stylesheet",
+				Source:     href,
+				LineNumber: lineNum,
+				// Alias field removed
 			}
 
 			result.Imports = append(result.Imports, imp)

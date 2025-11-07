@@ -53,7 +53,7 @@ func (p *JavaParser) extractPackage(lines []string, result *types.ParseResult) {
 	packageRe := regexp.MustCompile(`^\s*package\s+([\w.]+)\s*;`)
 
 	for i, line := range lines {
-		if matches := packageRe.FindStringSubmatch(line); matches != nil {
+		if matches := packageRe.FindStringSubmatch(line); matches != nil { // Fixed: used packageRe
 			result.Metadata["package"] = matches[1]
 
 			symbol := &types.Symbol{
@@ -75,17 +75,16 @@ func (p *JavaParser) extractImports(lines []string, result *types.ParseResult) {
 
 	for i, line := range lines {
 		if matches := importRe.FindStringSubmatch(line); matches != nil {
-			isStatic := matches[1] != ""
+			// isStatic := matches[1] != "" // Declared and not used, removed this line
 			importPath := matches[2]
 
 			imp := &types.Import{
-				Source: importPath,
-				Line:   i + 1,
+				Source:     importPath,
+				LineNumber: i + 1,
 			}
 
-			if isStatic {
-				imp.Alias = "static"
-			}
+			// Alias field no longer exists in types.Import
+			// The `isStatic` information can potentially be stored in Metadata if needed.
 
 			result.Imports = append(result.Imports, imp)
 		}
@@ -170,7 +169,7 @@ func (p *JavaParser) extractTypes(lines []string, content string, result *types.
 			for _, parent := range strings.Split(extendsClause, ",") {
 				parent = strings.TrimSpace(parent)
 				result.Relationships = append(result.Relationships, &types.Relationship{
-					Type:       types.RelationshipTypeExtends,
+					Type:       types.RelationshipExtends,
 					SourceName: name,
 					TargetName: parent,
 				})
@@ -182,7 +181,7 @@ func (p *JavaParser) extractTypes(lines []string, content string, result *types.
 			for _, iface := range strings.Split(implementsClause, ",") {
 				iface = strings.TrimSpace(iface)
 				result.Relationships = append(result.Relationships, &types.Relationship{
-					Type:       types.RelationshipTypeImplements,
+					Type:       types.RelationshipImplements,
 					SourceName: name,
 					TargetName: iface,
 				})

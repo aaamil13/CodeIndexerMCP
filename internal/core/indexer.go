@@ -1,6 +1,7 @@
 package core
 
 import (
+	gosql "database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -80,95 +81,49 @@ func NewIndexer(projectPath string, cfg *Config) (*Indexer, error) {
 
 	// Register all built-in parsers (23 languages)
 	// Core languages
-	if err := reg.Register(golang.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register Go parser: %w", err)
-	}
-	if err := reg.Register(python.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register Python parser: %w", err)
-	}
-	if err := reg.Register(typescript.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register TypeScript parser: %w", err)
-	}
+	reg.RegisterParser(golang.NewParser())
+	reg.RegisterParser(python.NewParser())
+	reg.RegisterParser(typescript.NewTypeScriptParser())
 
 	// JVM languages
-	if err := reg.Register(java.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register Java parser: %w", err)
-	}
-	if err := reg.Register(kotlin.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register Kotlin parser: %w", err)
-	}
+	reg.RegisterParser(java.NewParser())
+	reg.RegisterParser(kotlin.NewParser())
 
 	// .NET languages
-	if err := reg.Register(csharp.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register C# parser: %w", err)
-	}
+	reg.RegisterParser(csharp.NewParser())
 
 	// System languages
-	if err := reg.Register(c.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register C parser: %w", err)
-	}
-	if err := reg.Register(cpp.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register C++ parser: %w", err)
-	}
-	if err := reg.Register(rust.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register Rust parser: %w", err)
-	}
+	reg.RegisterParser(c.NewParser())
+	reg.RegisterParser(cpp.NewParser())
+	reg.RegisterParser(rust.NewParser())
 
 	// Web languages
-	if err := reg.Register(php.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register PHP parser: %w", err)
-	}
-	if err := reg.Register(ruby.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register Ruby parser: %w", err)
-	}
+	reg.RegisterParser(php.NewParser())
+	reg.RegisterParser(ruby.NewParser())
 
 	// Mobile
-	if err := reg.Register(swift.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register Swift parser: %w", err)
-	}
+	reg.RegisterParser(swift.NewParser())
 
 	// Scripting
-	if err := reg.Register(bash.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register Bash parser: %w", err)
-	}
-	if err := reg.Register(powershell.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register PowerShell parser: %w", err)
-	}
+	reg.RegisterParser(bash.NewParser())
+	reg.RegisterParser(powershell.NewParser())
 
 	// Database
-	if err := reg.Register(sql.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register SQL parser: %w", err)
-	}
+	reg.RegisterParser(sql.NewParser())
 
 	// Web markup and styling
-	if err := reg.Register(html.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register HTML parser: %w", err)
-	}
-	if err := reg.Register(css.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register CSS parser: %w", err)
-	}
+	reg.RegisterParser(html.NewParser())
+	reg.RegisterParser(css.NewParser())
 
 	// Configuration files
-	if err := reg.Register(config.NewJSONParser()); err != nil {
-		return nil, fmt.Errorf("failed to register JSON parser: %w", err)
-	}
-	if err := reg.Register(config.NewYAMLParser()); err != nil {
-		return nil, fmt.Errorf("failed to register YAML parser: %w", err)
-	}
-	if err := reg.Register(config.NewTOMLParser()); err != nil {
-		return nil, fmt.Errorf("failed to register TOML parser: %w", err)
-	}
-	if err := reg.Register(config.NewXMLParser()); err != nil {
-		return nil, fmt.Errorf("failed to register XML parser: %w", err)
-	}
-	if err := reg.Register(config.NewMarkdownParser()); err != nil {
-		return nil, fmt.Errorf("failed to register Markdown parser: %w", err)
-	}
+	reg.RegisterParser(config.NewJSONParser())
+	reg.RegisterParser(config.NewYAMLParser())
+	reg.RegisterParser(config.NewTOMLParser())
+	reg.RegisterParser(config.NewXMLParser())
+	reg.RegisterParser(config.NewMarkdownParser())
 
 	// Documentation
-	if err := reg.Register(rst.NewParser()); err != nil {
-		return nil, fmt.Errorf("failed to register reStructuredText parser: %w", err)
-	}
+	reg.RegisterParser(rst.NewParser())
 
 	// Initialize ignore matcher
 	ignoreMatcher, err := utils.NewIgnoreMatcher(projectPath)
@@ -297,7 +252,7 @@ func (idx *Indexer) IndexFile(filePath string) error {
 	}
 
 	// Check if we can parse this file
-	if !idx.parsers.CanParse(filePath) {
+	if _, err := idx.parsers.GetParserForFile(filePath); err != nil {
 		return nil // Skip unsupported files silently
 	}
 
@@ -346,7 +301,7 @@ func (idx *Indexer) IndexFile(filePath string) error {
 	lines, _ := utils.CountLines(filePath)
 
 	// Save to database in transaction
-	err = idx.db.Transaction(func(tx *database.DB) error {
+	err = idx.db.Transaction(func(tx *gosql.Tx) error {
 		// Save file
 		file := &types.File{
 			ProjectID:    idx.project.ID,
@@ -360,20 +315,20 @@ func (idx *Indexer) IndexFile(filePath string) error {
 			LastIndexed:  time.Now(),
 		}
 
-		if err := idx.db.SaveFile(file); err != nil {
+		if err := idx.db.SaveFile(file); err != nil { // Use idx.db directly
 			return err
 		}
 
 		// Delete old symbols/imports for this file
 		if existingFile != nil {
-			idx.db.DeleteSymbolsByFile(file.ID)
-			idx.db.DeleteImportsByFile(file.ID)
+			idx.db.DeleteSymbolsByFile(file.ID) // Use idx.db directly
+			idx.db.DeleteImportsByFile(file.ID) // Use idx.db directly
 		}
 
 		// Save symbols
 		for _, symbol := range parseResult.Symbols {
 			symbol.FileID = file.ID
-			if err := idx.db.SaveSymbol(symbol); err != nil {
+			if err := idx.db.SaveSymbol(symbol); err != nil { // Use idx.db directly
 				return err
 			}
 		}
@@ -381,14 +336,14 @@ func (idx *Indexer) IndexFile(filePath string) error {
 		// Save imports
 		for _, imp := range parseResult.Imports {
 			imp.FileID = file.ID
-			if err := idx.db.SaveImport(imp); err != nil {
+			if err := idx.db.SaveImport(imp); err != nil { // Use idx.db directly
 				return err
 			}
 		}
 
 		// Save relationships
 		for _, rel := range parseResult.Relationships {
-			if err := idx.db.SaveRelationship(rel); err != nil {
+			if err := idx.db.SaveRelationship(rel); err != nil { // Use idx.db directly
 				return err
 			}
 		}
@@ -432,7 +387,7 @@ func (idx *Indexer) scanFiles() ([]string, error) {
 		}
 
 		// Check if we can parse this file
-		if idx.parsers.CanParse(path) {
+		if _, err := idx.parsers.GetParserForFile(path); err == nil {
 			files = append(files, path)
 		}
 
@@ -618,40 +573,10 @@ func (idx *Indexer) FindReferences(symbolName string) ([]*types.Reference, error
 	return idx.db.GetReferencesBySymbol(symbol.ID)
 }
 
-// GetDependencies returns dependencies for a file
-func (idx *Indexer) GetDependencies(filePath string) (*types.DependencyGraph, error) {
-	relPath, err := filepath.Rel(idx.projectPath, filePath)
-	if err != nil {
-		return nil, err
-	}
-
-	file, err := idx.db.GetFileByPath(idx.project.ID, relPath)
-	if err != nil {
-		return nil, err
-	}
-	if file == nil {
-		return nil, fmt.Errorf("file not found: %s", relPath)
-	}
-
-	imports, err := idx.db.GetImportsByFile(file.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Build dependency graph
-	deps := make(map[string][]string)
-	deps[relPath] = []string{}
-
-	for _, imp := range imports {
-		deps[relPath] = append(deps[relPath], imp.Source)
-	}
-
-	return &types.DependencyGraph{
-		Root:         relPath,
-		Dependencies: deps,
-		Imports:      imports,
-	}, nil
-}
+// GetDependencies is deprecated. Use BuildDependencyGraph from the AI helpers instead.
+// func (idx *Indexer) GetDependencies(filePath string) (*types.DependencyGraph, error) {
+// 	// ... (old implementation removed) ...
+// }
 
 // GetAllFiles returns all indexed files
 func (idx *Indexer) GetAllFiles() ([]*types.File, error) {
@@ -743,7 +668,7 @@ func (idx *Indexer) AnalyzeDependencyChain(symbolName string) (map[string]interf
 
 // ValidateFileTypes validates all types in a file
 func (idx *Indexer) ValidateFileTypes(filePath string) (*types.TypeValidation, error) {
-	file, err := idx.db.GetFileByPath(filePath, idx.project.ID)
+	file, err := idx.db.GetFileByPath(idx.project.ID, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("file not found: %w", err)
 	}
@@ -752,7 +677,7 @@ func (idx *Indexer) ValidateFileTypes(filePath string) (*types.TypeValidation, e
 
 // FindUndefinedUsages finds all undefined symbol usages in a file
 func (idx *Indexer) FindUndefinedUsages(filePath string) ([]*types.UndefinedUsage, error) {
-	file, err := idx.db.GetFileByPath(filePath, idx.project.ID)
+	file, err := idx.db.GetFileByPath(idx.project.ID, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("file not found: %w", err)
 	}
@@ -766,7 +691,7 @@ func (idx *Indexer) CheckMethodExists(typeName, methodName string) (*types.Missi
 
 // CalculateTypeSafetyScore calculates type safety score for a file
 func (idx *Indexer) CalculateTypeSafetyScore(filePath string) (*types.TypeSafetyScore, error) {
-	file, err := idx.db.GetFileByPath(filePath, idx.project.ID)
+	file, err := idx.db.GetFileByPath(idx.project.ID, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("file not found: %w", err)
 	}

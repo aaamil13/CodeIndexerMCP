@@ -14,7 +14,11 @@ const (
 	SymbolTypeStruct    SymbolType = "struct"
 	SymbolTypeConstant  SymbolType = "constant"
 	SymbolTypePackage   SymbolType = "package"
-	SymbolTypeModule    SymbolType = "module"
+	SymbolTypeModule      SymbolType = "module"
+	SymbolTypeNamespace   SymbolType = "namespace"   // For C#, PHP, C++ namespaces
+	SymbolTypeProperty    SymbolType = "property"    // For properties in languages like C#, Kotlin, Swift
+	SymbolTypeField       SymbolType = "field"       // For fields/member variables in classes/structs
+	SymbolTypeConstructor SymbolType = "constructor" // For class constructors
 )
 
 // Visibility represents symbol visibility
@@ -25,6 +29,7 @@ const (
 	VisibilityPrivate   Visibility = "private"
 	VisibilityProtected Visibility = "protected"
 	VisibilityInternal  Visibility = "internal"
+	VisibilityPackage   Visibility = "package" // For Java package-private
 )
 
 // Symbol represents a code symbol (function, class, variable, etc.)
@@ -60,11 +65,13 @@ const (
 	RelationshipContains   RelationshipType = "contains"
 )
 
-// Relationship represents a relationship between two symbols
+// Relationship represents a relationship between two symbols (using names, resolved to IDs later)
 type Relationship struct {
 	ID           int64            `json:"id"`
-	FromSymbolID int64            `json:"from_symbol_id"`
-	ToSymbolID   int64            `json:"to_symbol_id"`
+	FromSymbolID int64            `json:"from_symbol_id,omitempty"` // Resolved ID from SourceName
+	ToSymbolID   int64            `json:"to_symbol_id,omitempty"`   // Resolved ID from TargetName
+	SourceName   string           `json:"source_name"`              // Original name of the source symbol
+	TargetName   string           `json:"target_name"`              // Original name of the target symbol
 	Type         RelationshipType `json:"type"`
 }
 

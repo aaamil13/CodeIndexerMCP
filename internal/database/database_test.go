@@ -8,11 +8,11 @@ import (
 	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
 
-func setupTestDB(t *testing.T) (*Database, string) {
+func setupTestDB(t *testing.T) (*DB, string) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	db, err := New(dbPath)
+	db, err := Open(dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestCreateProject(t *testing.T) {
 	}
 
 	// Verify project was created
-	retrieved, err := db.GetProject(project.ID)
+	retrieved, err := db.GetProject(project.Path)
 	if err != nil {
 		t.Fatalf("GetProject failed: %v", err)
 	}
@@ -66,9 +66,9 @@ func TestCreateFile(t *testing.T) {
 		Size:      1024,
 	}
 
-	err := db.CreateFile(file)
+	err := db.SaveFile(file)
 	if err != nil {
-		t.Fatalf("CreateFile failed: %v", err)
+		t.Fatalf("SaveFile failed: %v", err)
 	}
 
 	if file.ID == 0 {
@@ -97,7 +97,7 @@ func TestCreateSymbol(t *testing.T) {
 	db.CreateProject(project)
 
 	file := &types.File{ProjectID: project.ID, Path: "/test/file.go", Language: "go"}
-	db.CreateFile(file)
+	db.SaveFile(file)
 
 	symbol := &types.Symbol{
 		FileID:        file.ID,
@@ -111,9 +111,9 @@ func TestCreateSymbol(t *testing.T) {
 		Documentation: "TestFunc does testing",
 	}
 
-	err := db.CreateSymbol(symbol)
+	err := db.SaveSymbol(symbol)
 	if err != nil {
-		t.Fatalf("CreateSymbol failed: %v", err)
+		t.Fatalf("SaveSymbol failed: %v", err)
 	}
 
 	if symbol.ID == 0 {
@@ -145,7 +145,7 @@ func TestSearchSymbols(t *testing.T) {
 	db.CreateProject(project)
 
 	file := &types.File{ProjectID: project.ID, Path: "/test/file.go", Language: "go"}
-	db.CreateFile(file)
+	db.SaveFile(file)
 
 	// Create multiple symbols
 	symbols := []*types.Symbol{
@@ -155,7 +155,7 @@ func TestSearchSymbols(t *testing.T) {
 	}
 
 	for _, sym := range symbols {
-		db.CreateSymbol(sym)
+		db.SaveSymbol(sym)
 	}
 
 	// Search for symbols
@@ -172,9 +172,10 @@ func TestSearchSymbols(t *testing.T) {
 	}
 
 	// Search with type filter
+	funcType := types.SymbolTypeFunction
 	results, err = db.SearchSymbols(types.SearchOptions{
 		Query:     "Test",
-		Type:      types.SymbolTypeFunction,
+		Type:      &funcType,
 		ProjectID: project.ID,
 	})
 	if err != nil {
@@ -197,16 +198,16 @@ func TestCreateImport(t *testing.T) {
 	db.CreateProject(project)
 
 	file := &types.File{ProjectID: project.ID, Path: "/test/file.go", Language: "go"}
-	db.CreateFile(file)
+	db.SaveFile(file)
 
 	imp := &types.Import{
 		FileID: file.ID,
-		Path:   "fmt",
+		Source: "fmt",
 	}
 
-	err := db.CreateImport(imp)
+	err := db.SaveImport(imp)
 	if err != nil {
-		t.Fatalf("CreateImport failed: %v", err)
+		t.Fatalf("SaveImport failed: %v", err)
 	}
 
 	// Verify import was created
@@ -219,8 +220,8 @@ func TestCreateImport(t *testing.T) {
 		t.Fatalf("Expected 1 import, got %d", len(imports))
 	}
 
-	if imports[0].Path != imp.Path {
-		t.Errorf("Expected import path %s, got %s", imp.Path, imports[0].Path)
+	if imports[0].Source != imp.Source {
+		t.Errorf("Expected import source %s, got %s", imp.Source, imports[0].Source)
 	}
 }
 
@@ -232,23 +233,23 @@ func TestCreateRelationship(t *testing.T) {
 	db.CreateProject(project)
 
 	file := &types.File{ProjectID: project.ID, Path: "/test/file.go", Language: "go"}
-	db.CreateFile(file)
+	db.SaveFile(file)
 
 	parent := &types.Symbol{FileID: file.ID, Name: "Parent", Type: types.SymbolTypeClass}
-	db.CreateSymbol(parent)
+	db.SaveSymbol(parent)
 
 	child := &types.Symbol{FileID: file.ID, Name: "Child", Type: types.SymbolTypeClass}
-	db.CreateSymbol(child)
+	db.SaveSymbol(child)
 
 	rel := &types.Relationship{
 		FromSymbolID: child.ID,
 		ToSymbolID:   parent.ID,
-		Type:         types.RelationshipTypeInherits,
+		Type:         types.RelationshipExtends, // Changed to RelationshipExtends
 	}
 
-	err := db.CreateRelationship(rel)
+	err := db.SaveRelationship(rel)
 	if err != nil {
-		t.Fatalf("CreateRelationship failed: %v", err)
+		t.Fatalf("SaveRelationship failed: %v", err)
 	}
 
 	// Verify relationship was created
@@ -274,24 +275,22 @@ func TestCreateReference(t *testing.T) {
 	db.CreateProject(project)
 
 	file := &types.File{ProjectID: project.ID, Path: "/test/file.go", Language: "go"}
-	db.CreateFile(file)
+	db.SaveFile(file)
 
 	symbol := &types.Symbol{FileID: file.ID, Name: "MyFunc", Type: types.SymbolTypeFunction}
-	db.CreateSymbol(symbol)
+	db.SaveSymbol(symbol)
 
 	ref := &types.Reference{
-		SymbolID:  symbol.ID,
-		FileID:    file.ID,
-		Line:      25,
-		Column:    10,
-		Context:   "MyFunc()",
-		IsWrite:   false,
-		IsDirect:  true,
+		SymbolID:      symbol.ID,
+		FileID:        file.ID,
+		LineNumber:    25,
+		ColumnNumber:  10,
+		ReferenceType: "call",
 	}
 
-	err := db.CreateReference(ref)
+	err := db.SaveReference(ref)
 	if err != nil {
-		t.Fatalf("CreateReference failed: %v", err)
+		t.Fatalf("SaveReference failed: %v", err)
 	}
 
 	// Verify reference was created
@@ -304,8 +303,8 @@ func TestCreateReference(t *testing.T) {
 		t.Fatalf("Expected 1 reference, got %d", len(references))
 	}
 
-	if references[0].Line != ref.Line {
-		t.Errorf("Expected line %d, got %d", ref.Line, references[0].Line)
+	if references[0].LineNumber != ref.LineNumber {
+		t.Errorf("Expected line %d, got %d", ref.LineNumber, references[0].LineNumber)
 	}
 }
 
@@ -317,17 +316,17 @@ func TestGetSymbolByName(t *testing.T) {
 	db.CreateProject(project)
 
 	file := &types.File{ProjectID: project.ID, Path: "/test/file.go", Language: "go"}
-	db.CreateFile(file)
+	db.SaveFile(file)
 
 	symbol := &types.Symbol{
 		FileID: file.ID,
 		Name:   "UniqueFunc",
 		Type:   types.SymbolTypeFunction,
 	}
-	db.CreateSymbol(symbol)
+	db.SaveSymbol(symbol)
 
 	// Get by name
-	retrieved, err := db.GetSymbolByName("UniqueFunc", project.ID)
+	retrieved, err := db.GetSymbolByName("UniqueFunc")
 	if err != nil {
 		t.Fatalf("GetSymbolByName failed: %v", err)
 	}
@@ -345,7 +344,7 @@ func TestDeleteFile(t *testing.T) {
 	db.CreateProject(project)
 
 	file := &types.File{ProjectID: project.ID, Path: "/test/file.go", Language: "go"}
-	db.CreateFile(file)
+	db.SaveFile(file)
 
 	// Delete file
 	err := db.DeleteFile(file.ID)
@@ -368,21 +367,21 @@ func TestUpdateSymbol(t *testing.T) {
 	db.CreateProject(project)
 
 	file := &types.File{ProjectID: project.ID, Path: "/test/file.go", Language: "go"}
-	db.CreateFile(file)
+	db.SaveFile(file)
 
 	symbol := &types.Symbol{
 		FileID: file.ID,
 		Name:   "OldName",
 		Type:   types.SymbolTypeFunction,
 	}
-	db.CreateSymbol(symbol)
+	db.SaveSymbol(symbol)
 
 	// Update symbol
 	symbol.Name = "NewName"
 	symbol.Documentation = "Updated docs"
-	err := db.UpdateSymbol(symbol)
+	err := db.SaveSymbol(symbol) // SaveSymbol also handles updates
 	if err != nil {
-		t.Fatalf("UpdateSymbol failed: %v", err)
+		t.Fatalf("SaveSymbol failed: %v", err)
 	}
 
 	// Verify update
@@ -414,7 +413,7 @@ func TestGetAllFilesForProject(t *testing.T) {
 	}
 
 	for _, file := range files {
-		db.CreateFile(file)
+		db.SaveFile(file)
 	}
 
 	// Get all files
@@ -433,7 +432,7 @@ func TestDatabasePersistence(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "persist.db")
 
 	// Create database and add data
-	db, err := New(dbPath)
+	db, err := Open(dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -443,14 +442,14 @@ func TestDatabasePersistence(t *testing.T) {
 	db.Close()
 
 	// Reopen database
-	db2, err := New(dbPath)
+	db2, err := Open(dbPath)
 	if err != nil {
 		t.Fatalf("Failed to reopen database: %v", err)
 	}
 	defer db2.Close()
 
 	// Verify data persisted
-	retrieved, err := db2.GetProject(project.ID)
+	retrieved, err := db2.GetProject(project.Path)
 	if err != nil {
 		t.Fatalf("GetProject failed after reopen: %v", err)
 	}

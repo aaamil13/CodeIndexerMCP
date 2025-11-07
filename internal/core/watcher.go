@@ -1,6 +1,7 @@
 package core
 
 import (
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -175,7 +176,7 @@ func (w *Watcher) handleFileRemoval(filePath string) {
 
 // addDirectoryRecursive adds a directory and all subdirectories to the watch list
 func (w *Watcher) addDirectoryRecursive(dir string) error {
-	return filepath.Walk(dir, func(path string, info any, err error) error {
+	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}

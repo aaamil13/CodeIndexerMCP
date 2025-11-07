@@ -12,8 +12,8 @@ type SemanticAnalysisResult struct {
 	QualityScore        float64 // 0-100
 }
 
-// TypeInference represents inferred type information for a symbol
-type TypeInference struct {
+// SymbolTypeInference represents inferred type information for a symbol based on other symbols
+type SymbolTypeInference struct {
 	SymbolName   string
 	InferredType string
 	Confidence   float64 // 0.0 - 1.0
@@ -72,8 +72,8 @@ type Scope struct {
 	Type        string // "global", "class", "function", "block"
 }
 
-// DependencyEdge represents a dependency relationship between files or modules
-type DependencyEdge struct {
+// FileDependencyEdge represents a dependency relationship between files or modules
+type FileDependencyEdge struct {
 	FromFile   *File
 	ToFile     *File
 	ImportPath string

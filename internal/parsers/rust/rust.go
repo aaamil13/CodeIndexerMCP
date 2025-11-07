@@ -61,8 +61,8 @@ func (p *RustParser) extractUses(lines []string, result *types.ParseResult) {
 	for i, line := range lines {
 		if matches := useRe.FindStringSubmatch(line); matches != nil {
 			imp := &types.Import{
-				Source: matches[1],
-				Line:   i + 1,
+				Source:     matches[1],
+				LineNumber: i + 1,
 			}
 			result.Imports = append(result.Imports, imp)
 		}
@@ -221,7 +221,7 @@ func (p *RustParser) extractImpls(content string, result *types.ParseResult) {
 
 		// Add relationship
 		result.Relationships = append(result.Relationships, &types.Relationship{
-			Type:       types.RelationshipTypeImplements,
+			Type:       types.RelationshipImplements,
 			SourceName: typeName,
 			TargetName: traitName,
 		})

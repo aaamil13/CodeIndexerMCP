@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"fmt"
+	// "fmt" // Imported and not used
 	"log"
 	"os"
 
@@ -29,14 +29,24 @@ func main() {
 	log.Printf("Database: %s", *dbPath)
 
 	// Initialize database
-	db, err := database.NewDatabase(*dbPath)
+	db, err := database.Open(*dbPath) // Changed NewDatabase to Open
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
 	defer db.Close()
 
-	// Initialize indexer
-	indexer := core.NewIndexer(db)
+	// Get project path for indexer
+	projectPath, err := os.Getwd()
+	if err != nil {
+		log.Fatalf("Failed to get current working directory: %v", err)
+	}
+
+	// Initialize indexer (Indexer manages its own DB internally)
+	// Passing nil for config to use default
+	indexer, err := core.NewIndexer(projectPath, nil) // Corrected arguments and return values
+	if err != nil {
+		log.Fatalf("Failed to create indexer: %v", err)
+	}
 
 	// Create LSP server
 	server := lsp.NewServer(db, indexer)

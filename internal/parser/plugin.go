@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
@@ -46,6 +47,7 @@ type Registry struct {
 	parsers    map[string][]ParserPlugin      // language -> parsers
 	extensions map[string][]ParserPlugin      // extension -> parsers
 	analyzers  map[string][]FrameworkAnalyzer // language -> analyzers
+	mu         sync.RWMutex
 }
 
 // NewRegistry creates a new parser registry
@@ -57,8 +59,22 @@ func NewRegistry() *Registry {
 	}
 }
 
+// CanParse checks if any registered parser can handle the given file
+func (r *Registry) CanParse(filePath string) bool {
+	ext := strings.ToLower(filepath.Ext(filePath))
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	_, ok := r.extensions[ext]
+	return ok
+}
+
 // RegisterParser registers a parser plugin
 func (r *Registry) RegisterParser(parser ParserPlugin) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	lang := parser.Language()
 	r.parsers[lang] = append(r.parsers[lang], parser)
 
@@ -70,6 +86,9 @@ func (r *Registry) RegisterParser(parser ParserPlugin) {
 
 // RegisterFrameworkAnalyzer registers a framework analyzer
 func (r *Registry) RegisterFrameworkAnalyzer(analyzer FrameworkAnalyzer) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	lang := analyzer.Language()
 	r.analyzers[lang] = append(r.analyzers[lang], analyzer)
 }
@@ -78,7 +97,10 @@ func (r *Registry) RegisterFrameworkAnalyzer(analyzer FrameworkAnalyzer) {
 func (r *Registry) GetParserForFile(filePath string) (ParserPlugin, error) {
 	ext := strings.ToLower(filepath.Ext(filePath))
 
+	r.mu.RLock()
 	parsers, ok := r.extensions[ext]
+	r.mu.RUnlock()
+
 	if !ok || len(parsers) == 0 {
 		return nil, fmt.Errorf("no parser registered for extension: %s", ext)
 	}
@@ -96,6 +118,9 @@ func (r *Registry) GetParserForFile(filePath string) (ParserPlugin, error) {
 
 // GetParserForLanguage returns a parser for a specific language
 func (r *Registry) GetParserForLanguage(language string) (ParserPlugin, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	parsers, ok := r.parsers[language]
 	if !ok || len(parsers) == 0 {
 		return nil, fmt.Errorf("no parser registered for language: %s", language)
@@ -106,6 +131,8 @@ func (r *Registry) GetParserForLanguage(language string) (ParserPlugin, error) {
 
 // GetFrameworkAnalyzers returns all framework analyzers for a language
 func (r *Registry) GetFrameworkAnalyzers(language string) []FrameworkAnalyzer {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.analyzers[language]
 }
 
@@ -137,6 +164,8 @@ func (r *Registry) ParseFile(filePath string, content []byte) (*types.ParseResul
 
 // ListLanguages returns all registered languages
 func (r *Registry) ListLanguages() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	languages := make([]string, 0, len(r.parsers))
 	for lang := range r.parsers {
 		languages = append(languages, lang)
@@ -146,6 +175,8 @@ func (r *Registry) ListLanguages() []string {
 
 // ListFrameworks returns all registered frameworks
 func (r *Registry) ListFrameworks() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	frameworks := make(map[string]bool)
 	for _, analyzers := range r.analyzers {
 		for _, analyzer := range analyzers {

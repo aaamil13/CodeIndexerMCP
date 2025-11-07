@@ -52,8 +52,8 @@ func (p *BashParser) extractSources(lines []string, result *types.ParseResult) {
 	for i, line := range lines {
 		if matches := sourceRe.FindStringSubmatch(line); matches != nil {
 			imp := &types.Import{
-				Source: matches[1],
-				Line:   i + 1,
+				Source:     matches[1],
+				LineNumber: i + 1,
 			}
 			result.Imports = append(result.Imports, imp)
 		}

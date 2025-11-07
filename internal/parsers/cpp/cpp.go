@@ -62,8 +62,8 @@ func (p *CppParser) extractIncludes(lines []string, result *types.ParseResult) {
 	for i, line := range lines {
 		if matches := includeRe.FindStringSubmatch(line); matches != nil {
 			imp := &types.Import{
-				Source: matches[1],
-				Line:   i + 1,
+				Source:     matches[1],
+				LineNumber: i + 1,
 			}
 			result.Imports = append(result.Imports, imp)
 		}
@@ -144,7 +144,7 @@ func (p *CppParser) extractClasses(content string, result *types.ParseResult) {
 
 				if part != "" {
 					result.Relationships = append(result.Relationships, &types.Relationship{
-						Type:       types.RelationshipTypeExtends,
+						Type:       types.RelationshipExtends,
 						SourceName: name,
 						TargetName: part,
 					})

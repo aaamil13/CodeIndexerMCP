@@ -58,8 +58,8 @@ func (p *RubyParser) extractRequires(lines []string, result *types.ParseResult) 
 		// require
 		if matches := requireRe.FindStringSubmatch(line); matches != nil {
 			imp := &types.Import{
-				Source: matches[1],
-				Line:   i + 1,
+				Source:     matches[1],
+				LineNumber: i + 1,
 			}
 			result.Imports = append(result.Imports, imp)
 			continue
@@ -68,9 +68,9 @@ func (p *RubyParser) extractRequires(lines []string, result *types.ParseResult) 
 		// require_relative
 		if matches := requireRelRe.FindStringSubmatch(line); matches != nil {
 			imp := &types.Import{
-				Source: matches[1],
-				Line:   i + 1,
-				Alias:  "relative",
+				Source:     matches[1],
+				LineNumber: i + 1,
+				// Alias field no longer exists in types.Import
 			}
 			result.Imports = append(result.Imports, imp)
 			continue
@@ -79,9 +79,9 @@ func (p *RubyParser) extractRequires(lines []string, result *types.ParseResult) 
 		// gem
 		if matches := gemRe.FindStringSubmatch(line); matches != nil {
 			imp := &types.Import{
-				Source: matches[1],
-				Line:   i + 1,
-				Alias:  "gem",
+				Source:     matches[1],
+				LineNumber: i + 1,
+				// Alias field no longer exists in types.Import
 			}
 			result.Imports = append(result.Imports, imp)
 		}
@@ -142,7 +142,7 @@ func (p *RubyParser) extractClasses(content string, result *types.ParseResult) {
 		// Add inheritance relationship
 		if parent != "" {
 			result.Relationships = append(result.Relationships, &types.Relationship{
-				Type:       types.RelationshipTypeExtends,
+				Type:       types.RelationshipExtends,
 				SourceName: name,
 				TargetName: parent,
 			})

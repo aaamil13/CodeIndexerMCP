@@ -8,11 +8,11 @@ import (
 	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
 
-func setupTestDBForAI(t *testing.T) *database.Database {
+func setupTestDBForAI(t *testing.T) *database.DB {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	db, err := database.New(dbPath)
+	db, err := database.Open(dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)
 	}
@@ -22,7 +22,7 @@ func setupTestDBForAI(t *testing.T) *database.Database {
 	db.CreateProject(project)
 
 	file := &types.File{ProjectID: project.ID, Path: "/test/file.go", Language: "go"}
-	db.CreateFile(file)
+	db.SaveFile(file)
 
 	return db
 }
@@ -38,18 +38,18 @@ func TestAnalyzeSymbolChange_Rename(t *testing.T) {
 		Type:       types.SymbolTypeFunction,
 		Visibility: types.VisibilityPublic,
 	}
-	db.CreateSymbol(symbol)
+	db.SaveSymbol(symbol)
 
 	// Create some references
 	for i := 0; i < 3; i++ {
 		ref := &types.Reference{
-			SymbolID: symbol.ID,
-			FileID:   1,
-			Line:     10 + i,
-			Column:   5,
-			Context:  "OldFunc()",
+			SymbolID:      symbol.ID,
+			FileID:        1,
+			LineNumber:    10 + i,
+			ColumnNumber:  5,
+			ReferenceType: "call",
 		}
-		db.CreateReference(ref)
+		db.SaveReference(ref)
 	}
 
 	// Analyze rename change
@@ -99,17 +99,17 @@ func TestAnalyzeSymbolChange_Delete(t *testing.T) {
 		Type:       types.SymbolTypeFunction,
 		Visibility: types.VisibilityPublic,
 	}
-	db.CreateSymbol(symbol)
+	db.SaveSymbol(symbol)
 
 	// Create references
 	ref := &types.Reference{
-		SymbolID: symbol.ID,
-		FileID:   1,
-		Line:     20,
-		Column:   5,
-		Context:  "DeprecatedFunc()",
+		SymbolID:      symbol.ID,
+		FileID:        1,
+		LineNumber:    20,
+		ColumnNumber:  5,
+		ReferenceType: "call",
 	}
-	db.CreateReference(ref)
+	db.SaveReference(ref)
 
 	// Analyze delete change
 	tracker := NewChangeTracker(db)
@@ -151,15 +151,16 @@ func TestAnalyzeSymbolChange_Modify(t *testing.T) {
 		Signature:  "func Calculate(x int) int",
 		Visibility: types.VisibilityPublic,
 	}
-	db.CreateSymbol(symbol)
+	db.SaveSymbol(symbol)
 
 	// Create references
 	ref := &types.Reference{
-		SymbolID: symbol.ID,
-		FileID:   1,
-		Line:     30,
+		SymbolID:      symbol.ID,
+		FileID:        1,
+		LineNumber:    30,
+		ReferenceType: "call",
 	}
-	db.CreateReference(ref)
+	db.SaveReference(ref)
 
 	// Analyze modify change (signature change)
 	tracker := NewChangeTracker(db)
@@ -200,7 +201,7 @@ func TestSimulateChange(t *testing.T) {
 		Type:       types.SymbolTypeFunction,
 		Visibility: types.VisibilityPublic,
 	}
-	db.CreateSymbol(symbol)
+	db.SaveSymbol(symbol)
 
 	// Simulate change
 	tracker := NewChangeTracker(db)
@@ -209,7 +210,7 @@ func TestSimulateChange(t *testing.T) {
 		Symbol: symbol,
 	}
 
-	result, err := tracker.SimulateChange(change)
+	result, err := tracker.SimulateChange(change.Symbol.Name, change.Type, change.Symbol.Name)
 	if err != nil {
 		t.Fatalf("SimulateChange failed: %v", err)
 	}
@@ -220,7 +221,7 @@ func TestSimulateChange(t *testing.T) {
 
 	// Should return impact analysis
 	if result.Changes == nil {
-		t.Error("Expected changes in result")
+		t.Error("Expected Changes in result")
 	}
 }
 
@@ -234,14 +235,14 @@ func TestValidateChanges(t *testing.T) {
 		Name:   "Func1",
 		Type:   types.SymbolTypeFunction,
 	}
-	db.CreateSymbol(symbol1)
+	db.SaveSymbol(symbol1)
 
 	symbol2 := &types.Symbol{
 		FileID: 1,
 		Name:   "Func2",
 		Type:   types.SymbolTypeFunction,
 	}
-	db.CreateSymbol(symbol2)
+	db.SaveSymbol(symbol2)
 
 	// Create changes
 	changes := []*types.Change{
@@ -267,8 +268,8 @@ func TestValidateChanges(t *testing.T) {
 	}
 
 	// Should have analyzed all changes
-	if len(result.Changes) != len(changes) {
-		t.Errorf("Expected %d changes, got %d", len(changes), len(result.Changes))
+	if len(result.ChangeSet.Changes) != len(changes) {
+		t.Errorf("Expected %d changes, got %d", len(changes), len(result.ChangeSet.Changes))
 	}
 }
 
@@ -283,7 +284,7 @@ func TestChangeTracker_VisibilityChange(t *testing.T) {
 		Type:       types.SymbolTypeFunction,
 		Visibility: types.VisibilityPublic,
 	}
-	db.CreateSymbol(symbol)
+	db.SaveSymbol(symbol)
 
 	// Analyze changing to private
 	tracker := NewChangeTracker(db)
@@ -318,7 +319,7 @@ func TestChangeTracker_ConflictDetection(t *testing.T) {
 		Name:   "ExistingFunc",
 		Type:   types.SymbolTypeFunction,
 	}
-	db.CreateSymbol(existing)
+	db.SaveSymbol(existing)
 
 	// Create symbol to rename
 	toRename := &types.Symbol{
@@ -326,7 +327,7 @@ func TestChangeTracker_ConflictDetection(t *testing.T) {
 		Name:   "OldFunc",
 		Type:   types.SymbolTypeFunction,
 	}
-	db.CreateSymbol(toRename)
+	db.SaveSymbol(toRename)
 
 	// Try to rename to existing name
 	tracker := NewChangeTracker(db)

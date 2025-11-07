@@ -2,36 +2,24 @@ package golang
 
 import (
 	"go/ast"
-	"go/parser"
+	goparser "go/parser" // Alias standard library parser
 	"go/token"
-	"path/filepath"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
 	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
 
 // Parser is the Go language parser
-type Parser struct{}
+type Parser struct {
+	*parser.BaseParser
+}
 
 // NewParser creates a new Go parser
 func NewParser() *Parser {
-	return &Parser{}
-}
-
-// Language returns the language name
-func (p *Parser) Language() string {
-	return "go"
-}
-
-// Extensions returns supported file extensions
-func (p *Parser) Extensions() []string {
-	return []string{".go"}
-}
-
-// CanParse checks if this parser can handle the file
-func (p *Parser) CanParse(filePath string) bool {
-	ext := filepath.Ext(filePath)
-	return ext == ".go"
+	return &Parser{
+		BaseParser: parser.NewBaseParser("go", []string{".go"}, 100),
+	}
 }
 
 // Parse parses Go source code
@@ -39,7 +27,7 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 	fset := token.NewFileSet()
 
 	// Parse with comments
-	file, err := parser.ParseFile(fset, filePath, content, parser.ParseComments)
+	file, err := goparser.ParseFile(fset, filePath, content, goparser.ParseComments)
 	if err != nil {
 		return nil, err
 	}

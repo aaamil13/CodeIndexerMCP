@@ -2,35 +2,23 @@ package python
 
 import (
 	"bufio"
-	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
 	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
 
 // Parser is the Python language parser
-type Parser struct{}
+type Parser struct {
+	*parser.BaseParser
+}
 
 // NewParser creates a new Python parser
 func NewParser() *Parser {
-	return &Parser{}
-}
-
-// Language returns the language name
-func (p *Parser) Language() string {
-	return "python"
-}
-
-// Extensions returns supported file extensions
-func (p *Parser) Extensions() []string {
-	return []string{".py"}
-}
-
-// CanParse checks if this parser can handle the file
-func (p *Parser) CanParse(filePath string) bool {
-	ext := filepath.Ext(filePath)
-	return ext == ".py"
+	return &Parser{
+		BaseParser: parser.NewBaseParser("python", []string{".py"}, 100),
+	}
 }
 
 // Parse parses Python source code

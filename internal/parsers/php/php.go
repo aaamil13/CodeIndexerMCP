@@ -77,16 +77,17 @@ func (p *PHPParser) extractUses(lines []string, result *types.ParseResult) {
 	for i, line := range lines {
 		if matches := useRe.FindStringSubmatch(line); matches != nil {
 			importPath := matches[1]
-			alias := matches[2]
+			// alias := matches[2] // Declared and not used
 
 			imp := &types.Import{
-				Source: importPath,
-				Line:   i + 1,
+				Source:     importPath,
+				LineNumber: i + 1,
+				// Alias field no longer exists in types.Import
 			}
 
-			if alias != "" {
-				imp.Alias = alias
-			}
+			// If alias is still needed, it would need to be stored elsewhere,
+			// for example in the Metadata field of the Import struct.
+			// For now, removing the assignment to avoid compilation error.
 
 			result.Imports = append(result.Imports, imp)
 		}
@@ -162,7 +163,7 @@ func (p *PHPParser) extractTypes(content string, result *types.ParseResult) {
 		// Add relationships
 		if extendsClause != "" {
 			result.Relationships = append(result.Relationships, &types.Relationship{
-				Type:       types.RelationshipTypeExtends,
+				Type:       types.RelationshipExtends,
 				SourceName: name,
 				TargetName: extendsClause,
 			})
@@ -172,7 +173,7 @@ func (p *PHPParser) extractTypes(content string, result *types.ParseResult) {
 			for _, iface := range strings.Split(implementsClause, ",") {
 				iface = strings.TrimSpace(iface)
 				result.Relationships = append(result.Relationships, &types.Relationship{
-					Type:       types.RelationshipTypeImplements,
+					Type:       types.RelationshipImplements,
 					SourceName: name,
 					TargetName: iface,
 				})

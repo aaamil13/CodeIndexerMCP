@@ -8,8 +8,6 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
-
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
 
 // DB represents the database connection

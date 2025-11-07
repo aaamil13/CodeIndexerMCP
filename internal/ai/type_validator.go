@@ -10,11 +10,11 @@ import (
 
 // TypeValidator validates types and finds undefined usages
 type TypeValidator struct {
-	db *database.Database
+	db *database.DB
 }
 
 // NewTypeValidator creates a new type validator
-func NewTypeValidator(db *database.Database) *TypeValidator {
+func NewTypeValidator(db *database.DB) *TypeValidator {
 	return &TypeValidator{
 		db: db,
 	}
@@ -137,7 +137,7 @@ func (tv *TypeValidator) FindUndefinedUsages(fileID int64) ([]*types.UndefinedUs
 // CheckMethodExists checks if a method exists on a type
 func (tv *TypeValidator) CheckMethodExists(typeName, methodName string, projectID int64) (*types.MissingMethod, error) {
 	// Find the type symbol
-	typeSymbol, err := tv.db.GetSymbolByName(typeName, projectID)
+	typeSymbol, err := tv.db.GetSymbolByName(typeName)
 	if err != nil {
 		return &types.MissingMethod{
 			TypeName:   typeName,
@@ -210,7 +210,7 @@ func (tv *TypeValidator) ValidateSymbolTypes(symbolID int64) (*types.TypeValidat
 	}
 
 	for _, rel := range relationships {
-		if rel.Type == types.RelationshipTypeCalls {
+		if rel.Type == types.RelationshipCalls {
 			// Check if the called symbol exists
 			_, err := tv.db.GetSymbol(rel.ToSymbolID)
 			if err != nil {

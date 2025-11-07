@@ -79,16 +79,16 @@ func (p *KotlinParser) extractImports(lines []string, result *types.ParseResult)
 	for i, line := range lines {
 		if matches := importRe.FindStringSubmatch(line); matches != nil {
 			importPath := matches[1]
-			alias := matches[2]
+			// alias := matches[2] // Declared and not used
 
 			imp := &types.Import{
-				Source: importPath,
-				Line:   i + 1,
+				Source:     importPath,
+				LineNumber: i + 1,
 			}
 
-			if alias != "" {
-				imp.Alias = alias
-			}
+			// Alias field no longer exists in types.Import
+			// If needed, the alias logic would need to be stored elsewhere
+			// or handled differently by the MCP agents.
 
 			result.Imports = append(result.Imports, imp)
 		}
@@ -177,7 +177,7 @@ func (p *KotlinParser) extractTypes(content string, result *types.ParseResult) {
 
 				if part != "" {
 					result.Relationships = append(result.Relationships, &types.Relationship{
-						Type:       types.RelationshipTypeExtends,
+						Type:       types.RelationshipExtends,
 						SourceName: name,
 						TargetName: part,
 					})

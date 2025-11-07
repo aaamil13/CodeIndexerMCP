@@ -32,6 +32,7 @@ type Import struct {
 	Source         string     `json:"source"`
 	ImportedNames  []string   `json:"imported_names,omitempty"`
 	ImportType     ImportType `json:"import_type"`
-	LineNumber     int        `json:"line_number"`
+	Line           int        `json:"line"`
+	LineNumber     int        `json:"line_number"`               // Deprecated, use Line
 	ImportedSymbol string     `json:"imported_symbol,omitempty"` // For specific symbol imports
 }

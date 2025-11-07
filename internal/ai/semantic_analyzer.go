@@ -10,12 +10,12 @@ import (
 
 // SemanticAnalyzer performs semantic analysis across files
 type SemanticAnalyzer struct {
-	db            *database.Database
+	db            *database.DB
 	typeValidator *TypeValidator
 }
 
 // NewSemanticAnalyzer creates a new semantic analyzer
-func NewSemanticAnalyzer(db *database.Database) *SemanticAnalyzer {
+func NewSemanticAnalyzer(db *database.DB) *SemanticAnalyzer {
 	return &SemanticAnalyzer{
 		db:            db,
 		typeValidator: NewTypeValidator(db),
@@ -438,7 +438,7 @@ func (sa *SemanticAnalyzer) AnalyzeCallGraph(projectID int64) (*types.CallGraph,
 			}
 
 			for _, rel := range relationships {
-				if rel.Type == types.RelationshipTypeCalls {
+				if rel.Type == types.RelationshipCalls {
 					edge := &types.CallGraphEdge{
 						FromSymbolID: symbol.ID,
 						ToSymbolID:   rel.ToSymbolID,
