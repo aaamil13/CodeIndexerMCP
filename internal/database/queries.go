@@ -632,3 +632,60 @@ func (db *DB) GetAllFilesForProject(projectID int64) ([]*types.File, error) {
 
 	return files, rows.Err()
 }
+
+// GetReferencesByFile retrieves all references in a file
+func (db *DB) GetReferencesByFile(fileID int64) ([]*types.Reference, error) {
+	query := `
+		SELECT id, symbol_id, file_id, line_number, column_number, reference_type
+		FROM references
+		WHERE file_id = ?
+		ORDER BY line_number
+	`
+
+	rows, err := db.conn.Query(query, fileID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var references []*types.Reference
+	for rows.Next() {
+		var ref types.Reference
+		if err := rows.Scan(&ref.ID, &ref.SymbolID, &ref.FileID, &ref.LineNumber, &ref.ColumnNumber, &ref.ReferenceType); err != nil {
+			return nil, err
+		}
+		references = append(references, &ref)
+	}
+
+	return references, rows.Err()
+}
+
+// GetMethodsForType retrieves all methods for a given type (struct/class)
+func (db *DB) GetMethodsForType(typeSymbolID int64) ([]*types.Symbol, error) {
+	query := `
+		SELECT id, file_id, name, type, signature, parent_id,
+			start_line, end_line, start_column, end_column,
+			visibility, is_exported, is_async, is_static, is_abstract,
+			documentation, metadata
+		FROM symbols
+		WHERE parent_id = ? AND type = ?
+		ORDER BY name
+	`
+
+	rows, err := db.conn.Query(query, typeSymbolID, types.SymbolTypeMethod)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var methods []*types.Symbol
+	for rows.Next() {
+		method, err := scanSymbol(rows)
+		if err != nil {
+			return nil, err
+		}
+		methods = append(methods, method)
+	}
+
+	return methods, rows.Err()
+}

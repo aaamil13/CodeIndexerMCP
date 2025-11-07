@@ -35,6 +35,7 @@ type Indexer struct {
 	usageAnalyzer    *ai.UsageAnalyzer
 	changeTracker    *ai.ChangeTracker
 	depGraphBuilder  *ai.DependencyGraphBuilder
+	typeValidator    *ai.TypeValidator
 }
 
 // Config holds indexer configuration
@@ -138,6 +139,7 @@ func (idx *Indexer) Initialize() error {
 	idx.usageAnalyzer = ai.NewUsageAnalyzer(idx.db)
 	idx.changeTracker = ai.NewChangeTracker(idx.db)
 	idx.depGraphBuilder = ai.NewDependencyGraphBuilder(idx.db)
+	idx.typeValidator = ai.NewTypeValidator(idx.db)
 
 	return nil
 }
@@ -634,4 +636,38 @@ func (idx *Indexer) GetDependents(symbolName string) ([]*types.Symbol, error) {
 // AnalyzeDependencyChain analyzes the full dependency chain
 func (idx *Indexer) AnalyzeDependencyChain(symbolName string) (map[string]interface{}, error) {
 	return idx.depGraphBuilder.AnalyzeDependencyChain(symbolName)
+}
+
+// Type Validation Methods
+
+// ValidateFileTypes validates all types in a file
+func (idx *Indexer) ValidateFileTypes(filePath string) (*types.TypeValidation, error) {
+	file, err := idx.db.GetFileByPath(filePath, idx.project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("file not found: %w", err)
+	}
+	return idx.typeValidator.ValidateFile(file.ID)
+}
+
+// FindUndefinedUsages finds all undefined symbol usages in a file
+func (idx *Indexer) FindUndefinedUsages(filePath string) ([]*types.UndefinedUsage, error) {
+	file, err := idx.db.GetFileByPath(filePath, idx.project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("file not found: %w", err)
+	}
+	return idx.typeValidator.FindUndefinedUsages(file.ID)
+}
+
+// CheckMethodExists checks if a method exists on a type
+func (idx *Indexer) CheckMethodExists(typeName, methodName string) (*types.MissingMethod, error) {
+	return idx.typeValidator.CheckMethodExists(typeName, methodName, idx.project.ID)
+}
+
+// CalculateTypeSafetyScore calculates type safety score for a file
+func (idx *Indexer) CalculateTypeSafetyScore(filePath string) (*types.TypeSafetyScore, error) {
+	file, err := idx.db.GetFileByPath(filePath, idx.project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("file not found: %w", err)
+	}
+	return idx.typeValidator.CalculateTypeSafetyScore(file.ID)
 }

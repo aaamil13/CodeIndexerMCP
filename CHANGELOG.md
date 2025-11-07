@@ -5,6 +5,21 @@ All notable changes to CodeIndexerMCP will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Type Validation & Checking** (NEW):
+  - Validate types in files and find undefined usages
+  - Check if methods exist on types/classes
+  - Detect type mismatches and invalid calls
+  - Find unused imports with smart detection
+  - Calculate type safety scores (0-100) with quality ratings
+  - Typo suggestions using Levenshtein distance
+  - Detailed validation errors with context and suggestions
+
+- **New Type Validation MCP Tools** (4 tools):
+  - `validate_file_types`: Validate all types in a file (undefined symbols, type mismatches, missing methods)
+  - `find_undefined_usages`: Find all undefined symbol usages (methods/functions that don't exist)
+  - `check_method_exists`: Check if a method exists on a type with suggestions
+  - `calculate_type_safety_score`: Calculate type safety score with rating and recommendations
+
 - **Change Tracking & Impact Analysis** (Link State):
   - Simulate code changes before applying them
   - Analyze impact of deleting, renaming, or modifying symbols
@@ -84,10 +99,11 @@ All notable changes to CodeIndexerMCP will be documented in this file.
 
 ### Changed
 - CLI now supports `watch` command for real-time monitoring
-- MCP server now exposes **19 tools** (was 4):
+- MCP server now exposes **23 tools** (was 4):
   - 8 core tools
   - 7 AI-powered tools
   - 4 change tracking tools
+  - 4 type validation tools
 
 ## [0.1.0] - 2024-11-06
 

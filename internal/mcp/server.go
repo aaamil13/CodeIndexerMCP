@@ -526,6 +526,75 @@ func (s *Server) registerTools() {
 		},
 		Handler: s.handleGetSymbolDependents,
 	})
+
+	// Type validation tools
+	s.registerTool(&Tool{
+		Name:        "validate_file_types",
+		Description: "Validate all types in a file and find undefined usages, type mismatches, and missing methods",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"file_path": map[string]interface{}{
+					"type":        "string",
+					"description": "Path to the file to validate",
+				},
+			},
+			"required": []string{"file_path"},
+		},
+		Handler: s.handleValidateFileTypes,
+	})
+
+	s.registerTool(&Tool{
+		Name:        "find_undefined_usages",
+		Description: "Find all undefined symbol usages in a file (methods, functions, variables that don't exist)",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"file_path": map[string]interface{}{
+					"type":        "string",
+					"description": "Path to the file to check",
+				},
+			},
+			"required": []string{"file_path"},
+		},
+		Handler: s.handleFindUndefinedUsages,
+	})
+
+	s.registerTool(&Tool{
+		Name:        "check_method_exists",
+		Description: "Check if a specific method exists on a type/class",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"type_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the type/class",
+				},
+				"method_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the method to check",
+				},
+			},
+			"required": []string{"type_name", "method_name"},
+		},
+		Handler: s.handleCheckMethodExists,
+	})
+
+	s.registerTool(&Tool{
+		Name:        "calculate_type_safety_score",
+		Description: "Calculate type safety score for a file (0-100, with type coverage and error metrics)",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"file_path": map[string]interface{}{
+					"type":        "string",
+					"description": "Path to the file",
+				},
+			},
+			"required": []string{"file_path"},
+		},
+		Handler: s.handleCalculateTypeSafetyScore,
+	})
 }
 
 // registerTool registers a tool
@@ -919,5 +988,118 @@ func (s *Server) handleGetSymbolDependents(params json.RawMessage) (interface{},
 		"symbol":     req.SymbolName,
 		"dependents": dependents,
 		"count":      len(dependents),
+	}, nil
+}
+
+// Type validation tool handlers
+
+func (s *Server) handleValidateFileTypes(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		FilePath string `json:"file_path"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	validation, err := s.indexer.ValidateFileTypes(req.FilePath)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"file":                req.FilePath,
+		"is_valid":            validation.IsValid,
+		"undefined_count":     len(validation.UndefinedSymbols),
+		"type_mismatch_count": len(validation.TypeMismatches),
+		"missing_method_count": len(validation.MissingMethods),
+		"invalid_call_count":  len(validation.InvalidCalls),
+		"unused_import_count": len(validation.UnusedImports),
+		"validation":          validation,
+	}, nil
+}
+
+func (s *Server) handleFindUndefinedUsages(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		FilePath string `json:"file_path"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	undefined, err := s.indexer.FindUndefinedUsages(req.FilePath)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"file":              req.FilePath,
+		"undefined_usages":  undefined,
+		"count":             len(undefined),
+		"has_errors":        len(undefined) > 0,
+	}, nil
+}
+
+func (s *Server) handleCheckMethodExists(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		TypeName   string `json:"type_name"`
+		MethodName string `json:"method_name"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	result, err := s.indexer.CheckMethodExists(req.TypeName, req.MethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	if result == nil {
+		// Method exists
+		return map[string]interface{}{
+			"type_name":    req.TypeName,
+			"method_name":  req.MethodName,
+			"exists":       true,
+			"message":      fmt.Sprintf("Method '%s' exists on type '%s'", req.MethodName, req.TypeName),
+		}, nil
+	}
+
+	// Method doesn't exist
+	return map[string]interface{}{
+		"type_name":         req.TypeName,
+		"method_name":       req.MethodName,
+		"exists":            false,
+		"available_methods": result.AvailableMethods,
+		"suggestion":        result.Suggestion,
+		"message":           fmt.Sprintf("Method '%s' not found on type '%s'", req.MethodName, req.TypeName),
+	}, nil
+}
+
+func (s *Server) handleCalculateTypeSafetyScore(params json.RawMessage) (interface{}, error) {
+	var req struct {
+		FilePath string `json:"file_path"`
+	}
+
+	if err := json.Unmarshal(params, &req); err != nil {
+		return nil, err
+	}
+
+	score, err := s.indexer.CalculateTypeSafetyScore(req.FilePath)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"file":              req.FilePath,
+		"score":             score.Score,
+		"rating":            score.Rating,
+		"typed_symbols":     score.TypedSymbols,
+		"untyped_symbols":   score.UntypedSymbols,
+		"error_count":       score.ErrorCount,
+		"warning_count":     score.WarningCount,
+		"recommendation":    score.Recommendation,
+		"details":           score,
 	}, nil
 }
