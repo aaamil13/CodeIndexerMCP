@@ -17,11 +17,12 @@ type Parser interface {
 
 // ParseResult contains all information extracted from parsing a file
 type ParseResult struct {
-	Symbols       []*Symbol        `json:"symbols"`
-	Imports       []*Import        `json:"imports"`
-	Relationships []*Relationship  `json:"relationships"`
+	Symbols       []*Symbol              `json:"symbols"`
+	Imports       []*Import              `json:"imports"`
+	Relationships []*Relationship        `json:"relationships"`
+	Frameworks    []*FrameworkInfo       `json:"frameworks,omitempty"`    // Framework-specific info
 	Metadata      map[string]interface{} `json:"metadata,omitempty"`
-	Errors        []ParseError     `json:"errors,omitempty"`
+	Errors        []ParseError           `json:"errors,omitempty"`
 }
 
 // ParseError represents an error that occurred during parsing

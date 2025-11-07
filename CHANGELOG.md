@@ -5,7 +5,45 @@ All notable changes to CodeIndexerMCP will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Type Validation & Checking** (NEW):
+- **Extensible Parser Architecture** (MAJOR):
+  - Plugin-based system for language parsers
+  - Support for 18+ programming languages
+  - Tree-sitter integration layer for robust parsing
+  - Framework analyzer system (React, Django, Spring, etc.)
+  - LSP-compatible design for future IDE integration
+  - Configuration file parsers (JSON, YAML, TOML, XML, Markdown)
+  - Parser priority system for handling multiple parsers per language
+  - Modular, extensible design following best practices
+
+- **New Language Support** (Ready for Tree-sitter integration):
+  - JavaScript/TypeScript (.js, .jsx, .ts, .tsx)
+  - Java (.java)
+  - C# (.cs)
+  - C/C++ (.c, .cpp, .h, .hpp)
+  - PHP (.php)
+  - Ruby (.rb)
+  - Rust (.rs)
+  - Kotlin (.kt, .kts)
+  - Swift (.swift)
+  - Shell/Bash (.sh, .bash)
+  - SQL (.sql)
+  - HTML/CSS (.html, .css, .scss)
+
+- **Configuration Parsers** (Active):
+  - JSON parser with structure extraction
+  - YAML parser with key detection
+  - TOML parser with section support
+  - XML parser with element parsing
+  - Markdown parser with header extraction
+
+- **Framework Analyzer System**:
+  - Plugin interface for framework-specific analysis
+  - Automatic framework detection
+  - Extract components, routes, models, etc.
+  - Support for frontend (React, Vue, Angular) and backend (Django, Flask, Spring) frameworks
+  - Extensible architecture for adding new frameworks
+
+- **Type Validation & Checking**:
   - Validate types in files and find undefined usages
   - Check if methods exist on types/classes
   - Detect type mismatches and invalid calls
