@@ -158,6 +158,12 @@ var LanguageConfigs = map[string]*LanguageConfig{
 		Grammar:    "tree-sitter-css",
 		QueryFiles: []string{"queries/css/symbols.scm"},
 	},
+	"powershell": {
+		Name:       "powershell",
+		Extensions: []string{".ps1", ".psm1", ".psd1"},
+		Grammar:    "tree-sitter-powershell",
+		QueryFiles: []string{"queries/powershell/symbols.scm"},
+	},
 }
 
 // SymbolExtractor extracts symbols from Tree-sitter parse tree

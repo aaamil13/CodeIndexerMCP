@@ -25,19 +25,30 @@ All notable changes to CodeIndexerMCP will be documented in this file.
   - Parser priority system for handling multiple parsers per language
   - Modular, extensible design following best practices
 
-- **New Language Support** (Ready for Tree-sitter integration):
-  - JavaScript/TypeScript (.js, .jsx, .ts, .tsx)
-  - Java (.java)
-  - C# (.cs)
-  - C/C++ (.c, .cpp, .h, .hpp)
-  - PHP (.php)
-  - Ruby (.rb)
-  - Rust (.rs)
-  - Kotlin (.kt, .kts)
-  - Swift (.swift)
-  - Shell/Bash (.sh, .bash)
-  - SQL (.sql)
-  - HTML/CSS (.html, .css, .scss)
+- **Comprehensive Language Support** (23 languages - ALL IMPLEMENTED):
+  - **JavaScript/TypeScript** (.js, .jsx, .ts, .tsx) - Full parser with functions, classes, interfaces, imports
+  - **Java** (.java) - Complete parser with classes, methods, fields, packages, inheritance
+  - **C#** (.cs) - Full parser with namespaces, classes, methods, properties, using directives
+  - **C** (.c, .h) - Parser with functions, structs, unions, enums, typedefs, #defines
+  - **C++** (.cpp, .cc, .hpp, .h) - Parser with classes, templates, namespaces, inheritance
+  - **PHP** (.php) - Full parser with classes, traits, methods, properties, namespaces
+  - **Ruby** (.rb) - Parser with classes, modules, methods, attr_accessor, requires
+  - **Rust** (.rs) - Complete parser with structs, traits, impl blocks, mods, functions
+  - **Kotlin** (.kt, .kts) - Parser with classes, objects, extensions, properties, functions
+  - **Swift** (.swift) - Full parser with classes, structs, protocols, extensions, init
+  - **Bash** (.sh, .bash) - Parser with functions, variables, source statements
+  - **PowerShell** (.ps1, .psm1, .psd1) - Parser with functions, classes, enums, cmdlets
+  - **SQL** (.sql) - Parser with tables, views, procedures, functions, triggers
+  - **HTML** (.html, .htm) - Parser with IDs, classes, script/link tags
+  - **CSS/SCSS/SASS** (.css, .scss, .sass, .less) - Parser with selectors, variables, keyframes, media queries
+  - **reStructuredText** (.rst, .rest) - Parser with sections, directives, references
+  - **Python** (.py) - Already implemented
+  - **Go** (.go) - Already implemented
+  - **JSON** (.json) - Already implemented
+  - **YAML** (.yaml, .yml) - Already implemented
+  - **TOML** (.toml) - Already implemented
+  - **XML** (.xml) - Already implemented
+  - **Markdown** (.md) - Already implemented
 
 - **Configuration Parsers** (Active):
   - JSON parser with structure extraction
@@ -46,11 +57,15 @@ All notable changes to CodeIndexerMCP will be documented in this file.
   - XML parser with element parsing
   - Markdown parser with header extraction
 
-- **Framework Analyzer System**:
+- **Framework Analyzer System** (3 analyzers implemented):
+  - **React Analyzer** - Components, hooks, routes, patterns, issue detection
+  - **Django Analyzer** - Models, views, URL patterns, serializers, forms, admin, security checks
+  - **Flask Analyzer** - Routes, blueprints, extensions, resources, models, security checks
   - Plugin interface for framework-specific analysis
-  - Automatic framework detection
-  - Extract components, routes, models, etc.
-  - Support for frontend (React, Vue, Angular) and backend (Django, Flask, Spring) frameworks
+  - Automatic framework detection from imports/patterns
+  - Extract components, routes, models, fields, relationships
+  - Pattern detection (Context API, Redux, HOC, etc.)
+  - Security issue detection (N+1 queries, SQL injection, CSRF, etc.)
   - Extensible architecture for adding new frameworks
 
 - **Type Validation & Checking**:
