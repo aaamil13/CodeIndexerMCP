@@ -5,6 +5,16 @@ All notable changes to CodeIndexerMCP will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Language Server Protocol (LSP) Support** (MAJOR):
+  - Full LSP server implementation for IDE integration
+  - Standard LSP features: completion, hover, definition, references, symbols, rename
+  - Custom AI-powered features: semantic analysis, type checking, call graphs, dependency analysis
+  - Support for VS Code, Neovim, Emacs, Sublime Text, Vim
+  - Real-time code intelligence across 18+ languages
+  - Incremental indexing for performance
+  - Comprehensive LSP documentation and IDE configuration guides
+  - CLI command: `codeindexer-lsp` for running the LSP server
+
 - **Extensible Parser Architecture** (MAJOR):
   - Plugin-based system for language parsers
   - Support for 18+ programming languages
