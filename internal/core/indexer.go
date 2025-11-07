@@ -11,8 +11,25 @@ import (
 	"github.com/aaamil13/CodeIndexerMCP/internal/ai"
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/bash"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/c"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/config"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/cpp"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/csharp"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/css"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/golang"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/html"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/java"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/kotlin"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/php"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/powershell"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/python"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/rst"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/ruby"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/rust"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/sql"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/swift"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/typescript"
 	"github.com/aaamil13/CodeIndexerMCP/internal/utils"
 	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
@@ -61,12 +78,96 @@ func NewIndexer(projectPath string, cfg *Config) (*Indexer, error) {
 	// Initialize parser registry
 	reg := parser.NewRegistry()
 
-	// Register built-in parsers
+	// Register all built-in parsers (23 languages)
+	// Core languages
 	if err := reg.Register(golang.NewParser()); err != nil {
 		return nil, fmt.Errorf("failed to register Go parser: %w", err)
 	}
 	if err := reg.Register(python.NewParser()); err != nil {
 		return nil, fmt.Errorf("failed to register Python parser: %w", err)
+	}
+	if err := reg.Register(typescript.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register TypeScript parser: %w", err)
+	}
+
+	// JVM languages
+	if err := reg.Register(java.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register Java parser: %w", err)
+	}
+	if err := reg.Register(kotlin.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register Kotlin parser: %w", err)
+	}
+
+	// .NET languages
+	if err := reg.Register(csharp.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register C# parser: %w", err)
+	}
+
+	// System languages
+	if err := reg.Register(c.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register C parser: %w", err)
+	}
+	if err := reg.Register(cpp.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register C++ parser: %w", err)
+	}
+	if err := reg.Register(rust.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register Rust parser: %w", err)
+	}
+
+	// Web languages
+	if err := reg.Register(php.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register PHP parser: %w", err)
+	}
+	if err := reg.Register(ruby.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register Ruby parser: %w", err)
+	}
+
+	// Mobile
+	if err := reg.Register(swift.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register Swift parser: %w", err)
+	}
+
+	// Scripting
+	if err := reg.Register(bash.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register Bash parser: %w", err)
+	}
+	if err := reg.Register(powershell.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register PowerShell parser: %w", err)
+	}
+
+	// Database
+	if err := reg.Register(sql.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register SQL parser: %w", err)
+	}
+
+	// Web markup and styling
+	if err := reg.Register(html.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register HTML parser: %w", err)
+	}
+	if err := reg.Register(css.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register CSS parser: %w", err)
+	}
+
+	// Configuration files
+	if err := reg.Register(config.NewJSONParser()); err != nil {
+		return nil, fmt.Errorf("failed to register JSON parser: %w", err)
+	}
+	if err := reg.Register(config.NewYAMLParser()); err != nil {
+		return nil, fmt.Errorf("failed to register YAML parser: %w", err)
+	}
+	if err := reg.Register(config.NewTOMLParser()); err != nil {
+		return nil, fmt.Errorf("failed to register TOML parser: %w", err)
+	}
+	if err := reg.Register(config.NewXMLParser()); err != nil {
+		return nil, fmt.Errorf("failed to register XML parser: %w", err)
+	}
+	if err := reg.Register(config.NewMarkdownParser()); err != nil {
+		return nil, fmt.Errorf("failed to register Markdown parser: %w", err)
+	}
+
+	// Documentation
+	if err := reg.Register(rst.NewParser()); err != nil {
+		return nil, fmt.Errorf("failed to register reStructuredText parser: %w", err)
 	}
 
 	// Initialize ignore matcher
