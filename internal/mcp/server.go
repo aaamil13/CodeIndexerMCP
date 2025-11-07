@@ -332,7 +332,7 @@ func (s *Server) registerTools() {
 			"properties": map[string]interface{}{
 				"language": map[string]interface{}{
 					"type":        "string",
-					"description": "Filter by language (optional)",
+					"description": "Language filter (go, python, typescript, etc.)",
 				},
 			},
 		},
@@ -942,8 +942,8 @@ func (s *Server) handleBuildDependencyGraph(params json.RawMessage) (interface{}
 		"symbol":            req.SymbolName,
 		"total_nodes":       len(graph.Nodes),
 		"total_edges":       len(graph.Edges),
-		"direct_deps":       len(graph.DirectDependencies),
-		"direct_dependents": len(graph.DirectDependents),
+		"direct_dependencies": graph.DirectDependencies,
+		"direct_dependents": graph.DirectDependents,
 		"coupling_score":    graph.CouplingScore,
 		"graph":             graph,
 	}, nil
@@ -958,7 +958,7 @@ func (s *Server) handleGetSymbolDependencies(params json.RawMessage) (interface{
 		return nil, err
 	}
 
-	dependencies, err := s.indexer.GetSymbolDependencies(req.SymbolName)
+	dependencies, err := s.indexer.GetDependencies(req.SymbolName)
 	if err != nil {
 		return nil, err
 	}
@@ -979,7 +979,7 @@ func (s *Server) handleGetSymbolDependents(params json.RawMessage) (interface{},
 		return nil, err
 	}
 
-	dependents, err := s.indexer.GetSymbolDependents(req.SymbolName)
+	dependents, err := s.indexer.GetDependents(req.SymbolName)
 	if err != nil {
 		return nil, err
 	}

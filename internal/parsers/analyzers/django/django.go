@@ -168,16 +168,13 @@ func (a *DjangoAnalyzer) parseModel(symbol *types.Symbol, content string) *types
 	// Extract fields
 	lines := strings.Split(content, "\n")
 	inClass := false
-	indentLevel := 0
 
-	for i, line := range lines {
+	for _, line := range lines { // Removed 'i' from here
 		trimmed := strings.TrimSpace(line)
 
 		// Find class definition
 		if strings.Contains(trimmed, "class "+symbol.Name) {
 			inClass = true
-			// Detect indentation
-			indentLevel = len(line) - len(trimmed)
 			continue
 		}
 
@@ -192,7 +189,7 @@ func (a *DjangoAnalyzer) parseModel(symbol *types.Symbol, content string) *types
 
 		// Check if this is a field definition
 		if a.isFieldDefinition(trimmed) {
-			field := a.parseField(trimmed, i+1)
+			field := a.parseField(trimmed)
 			if field != nil {
 				model.Fields = append(model.Fields, field)
 			}
@@ -234,7 +231,7 @@ func (a *DjangoAnalyzer) isFieldDefinition(line string) bool {
 	return false
 }
 
-func (a *DjangoAnalyzer) parseField(line string, lineNum int) *types.ModelField {
+func (a *DjangoAnalyzer) parseField(line string) *types.ModelField {
 	// Extract: field_name = models.FieldType(...)
 	parts := strings.Split(line, "=")
 	if len(parts) < 2 {

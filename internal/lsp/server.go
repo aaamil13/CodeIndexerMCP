@@ -1,7 +1,6 @@
 package lsp
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,11 +9,12 @@ import (
 	"github.com/aaamil13/CodeIndexerMCP/internal/ai"
 	"github.com/aaamil13/CodeIndexerMCP/internal/core"
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
+	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
 
 // Server implements a Language Server Protocol server
 type Server struct {
-	db           *database.Database
+	db           *database.DB
 	indexer      *core.Indexer
 	analyzer     *ai.SemanticAnalyzer
 	capabilities ServerCapabilities
@@ -31,7 +31,7 @@ type Server struct {
 }
 
 // NewServer creates a new LSP server
-func NewServer(db *database.Database, indexer *core.Indexer) *Server {
+func NewServer(db *database.DB, indexer *core.Indexer) *Server {
 	return &Server{
 		db:         db,
 		indexer:    indexer,
@@ -191,7 +191,7 @@ func (s *Server) handleInitialize(msg *Message) (interface{}, error) {
 }
 
 // handleInitialized handles the initialized notification
-func (s *Server) handleInitialized(msg *Message) (interface{}, error) {
+func (s *Server) handleInitialized( msg *Message) (interface{}, error) {
 	s.initialized = true
 	return nil, nil
 }
@@ -431,7 +431,7 @@ func (s *Server) handleWorkspaceSymbol(msg *Message) (interface{}, error) {
 	}
 
 	// Search symbols
-	symbols, err := s.db.SearchSymbols(database.SearchOptions{
+	symbols, err := s.db.SearchSymbols(types.SearchOptions{
 		Query: params.Query,
 		Limit: 50,
 	})
@@ -624,13 +624,7 @@ func (s *Server) handleDependencies(msg *Message) (interface{}, error) {
 		return nil, err
 	}
 
-	// Build dependency graph
-	graph := ai.NewDependencyGraph(s.db)
-	if err := graph.Build(context.Background(), params.ProjectID); err != nil {
-		return nil, err
-	}
-
-	return graph, nil
+	return nil, fmt.Errorf("not implemented: project-wide dependency graph")
 }
 
 // Helper methods
@@ -639,13 +633,22 @@ func (s *Server) indexWorkspace(uri string) {
 	// Extract path from URI
 	path := uriToPath(uri)
 
-	// Create project and index
-	project, err := s.db.CreateProject(path, path)
+	// Get or create project
+	project, err := s.db.GetProject(path)
 	if err != nil {
 		return
 	}
+	if project == nil {
+		project = &types.Project{
+			Path: path,
+			Name: path, // Use path as name for now
+		}
+		if err := s.db.CreateProject(project); err != nil {
+			return
+		}
+	}
 
-	s.indexer.IndexDirectory(path, project.ID)
+	s.indexer.IndexAll()
 }
 
 func (s *Server) indexDocument(uri string, content []byte) {
@@ -653,10 +656,10 @@ func (s *Server) indexDocument(uri string, content []byte) {
 	path := uriToPath(uri)
 
 	// This is simplified - in production would need to get/create project
-	s.indexer.IndexFile(path, 1) // Assuming project ID 1
+	s.indexer.IndexFile(path)
 }
 
-func (s *Server) getSymbolAtPosition(uri string, pos Position) (*database.Symbol, error) {
+func (s *Server) getSymbolAtPosition(uri string, pos Position) (*types.Symbol, error) {
 	fileID, err := s.getFileIDFromURI(uri)
 	if err != nil {
 		return nil, err
@@ -677,7 +680,7 @@ func (s *Server) getSymbolAtPosition(uri string, pos Position) (*database.Symbol
 	return nil, nil
 }
 
-func (s *Server) getSymbolsInScope(uri string, pos Position) ([]*database.Symbol, error) {
+func (s *Server) getSymbolsInScope(uri string, pos Position) ([]*types.Symbol, error) {
 	fileID, err := s.getFileIDFromURI(uri)
 	if err != nil {
 		return nil, err
@@ -689,20 +692,31 @@ func (s *Server) getSymbolsInScope(uri string, pos Position) ([]*database.Symbol
 
 func (s *Server) getFileIDFromURI(uri string) (int64, error) {
 	path := uriToPath(uri)
-
-	files, err := s.db.SearchFiles(database.SearchOptions{
-		Query: path,
-		Limit: 1,
-	})
+	projectID, err := s.getProjectIDFromURI(uri)
 	if err != nil {
 		return 0, err
 	}
 
-	if len(files) == 0 {
+	file, err := s.db.GetFileByPath(projectID, path)
+	if err != nil {
+		return 0, err
+	}
+	if file == nil {
 		return 0, fmt.Errorf("file not found: %s", path)
 	}
+	return file.ID, nil
+}
 
-	return files[0].ID, nil
+func (s *Server) getProjectIDFromURI(uri string) (int64, error) {
+	path := uriToPath(uri)
+	project, err := s.db.GetProject(path)
+	if err != nil {
+		return 0, err
+	}
+	if project == nil {
+		return 0, fmt.Errorf("project not found for uri: %s", uri)
+	}
+	return project.ID, nil
 }
 
 func uriToPath(uri string) string {

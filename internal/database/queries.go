@@ -23,7 +23,7 @@ func (db *DB) CreateProject(project *types.Project) error {
 		VALUES (?, ?, ?, ?, ?)
 	`
 
-	result, err := db.conn.Exec(query,
+	result, err := db.enqueueWrite(query,
 		project.Path,
 		project.Name,
 		langStatsJSON,
@@ -50,7 +50,8 @@ func (db *DB) GetProject(path string) (*types.Project, error) {
 	var project types.Project
 	var langStatsJSON string
 
-	err := db.conn.QueryRow(query, path).Scan(
+	row := db.enqueueQueryRow(query, path) // Use enqueueQueryRow
+	err := row.Scan(
 		&project.ID,
 		&project.Path,
 		&project.Name,
@@ -86,7 +87,7 @@ func (db *DB) UpdateProject(project *types.Project) error {
 		WHERE id = ?
 	`
 
-	_, err = db.conn.Exec(query, project.Name, langStatsJSON, project.LastIndexed, project.ID)
+	_, err = db.enqueueWrite(query, project.Name, langStatsJSON, project.LastIndexed, project.ID) // Use enqueueWrite
 	return err
 }
 
@@ -108,7 +109,7 @@ func (db *DB) SaveFile(file *types.File) error {
 		RETURNING id
 	`
 
-	err := db.conn.QueryRow(query,
+	row := db.enqueueQueryRow(query, // Use enqueueQueryRow
 		file.ProjectID,
 		file.Path,
 		file.RelativePath,
@@ -118,7 +119,8 @@ func (db *DB) SaveFile(file *types.File) error {
 		file.Hash,
 		file.LastModified,
 		file.LastIndexed,
-	).Scan(&file.ID)
+	)
+	err := row.Scan(&file.ID)
 
 	return err
 }
@@ -128,7 +130,8 @@ func (db *DB) GetFile(id int64) (*types.File, error) {
 	query := `SELECT id, project_id, path, relative_path, language, size, lines_of_code, hash, last_modified, last_indexed FROM files WHERE id = ?`
 
 	var file types.File
-	err := db.conn.QueryRow(query, id).Scan(
+	row := db.enqueueQueryRow(query, id) // Use enqueueQueryRow
+	err := row.Scan(
 		&file.ID,
 		&file.ProjectID,
 		&file.Path,
@@ -156,7 +159,8 @@ func (db *DB) GetFileByPath(projectID int64, relativePath string) (*types.File, 
 	query := `SELECT id, project_id, path, relative_path, language, size, lines_of_code, hash, last_modified, last_indexed FROM files WHERE project_id = ? AND relative_path = ?`
 
 	var file types.File
-	err := db.conn.QueryRow(query, projectID, relativePath).Scan(
+	row := db.enqueueQueryRow(query, projectID, relativePath) // Use enqueueQueryRow
+	err := row.Scan(
 		&file.ID,
 		&file.ProjectID,
 		&file.Path,
@@ -181,7 +185,7 @@ func (db *DB) GetFileByPath(projectID int64, relativePath string) (*types.File, 
 
 // DeleteFile deletes a file and all its symbols
 func (db *DB) DeleteFile(id int64) error {
-	_, err := db.conn.Exec("DELETE FROM files WHERE id = ?", id)
+	_, err := db.enqueueWrite("DELETE FROM files WHERE id = ?", id) // Use enqueueWrite
 	return err
 }
 
@@ -204,7 +208,7 @@ func (db *DB) SaveSymbol(symbol *types.Symbol) error {
 		RETURNING id
 	`
 
-	err = db.conn.QueryRow(query,
+	row := db.enqueueQueryRow(query, // Use enqueueQueryRow
 		symbol.FileID,
 		symbol.Name,
 		symbol.Type,
@@ -221,14 +225,15 @@ func (db *DB) SaveSymbol(symbol *types.Symbol) error {
 		symbol.IsAbstract,
 		nullString(symbol.Documentation),
 		metadataJSON,
-	).Scan(&symbol.ID)
+	)
+	err = row.Scan(&symbol.ID)
 
 	return err
 }
 
 // DeleteSymbolsByFile deletes all symbols for a file
 func (db *DB) DeleteSymbolsByFile(fileID int64) error {
-	_, err := db.conn.Exec("DELETE FROM symbols WHERE file_id = ?", fileID)
+	_, err := db.enqueueWrite("DELETE FROM symbols WHERE file_id = ?", fileID) // Use enqueueWrite
 	return err
 }
 
@@ -255,7 +260,7 @@ func (db *DB) SearchSymbols(opts types.SearchOptions) ([]*types.Symbol, error) {
 		query += " LIMIT 100" // Default limit
 	}
 
-	rows, err := db.conn.Query(query, args...)
+	rows, err := db.conn.Query(query, args...) // Query operations can still be direct
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +290,7 @@ func (db *DB) GetSymbolsByFile(fileID int64) ([]*types.Symbol, error) {
 		ORDER BY start_line
 	`
 
-	rows, err := db.conn.Query(query, fileID)
+	rows, err := db.conn.Query(query, fileID) // Query operations can still be direct
 	if err != nil {
 		return nil, err
 	}
@@ -318,21 +323,22 @@ func (db *DB) SaveImport(imp *types.Import) error {
 		RETURNING id
 	`
 
-	err = db.conn.QueryRow(query,
+	row := db.enqueueQueryRow(query, // Use enqueueQueryRow
 		imp.FileID,
 		imp.Source,
 		namesJSON,
 		imp.ImportType,
 		imp.LineNumber,
 		nullString(imp.ImportedSymbol),
-	).Scan(&imp.ID)
+	)
+	err = row.Scan(&imp.ID)
 
 	return err
 }
 
 // DeleteImportsByFile deletes all imports for a file
 func (db *DB) DeleteImportsByFile(fileID int64) error {
-	_, err := db.conn.Exec("DELETE FROM imports WHERE file_id = ?", fileID)
+	_, err := db.enqueueWrite("DELETE FROM imports WHERE file_id = ?", fileID) // Use enqueueWrite
 	return err
 }
 
@@ -340,7 +346,7 @@ func (db *DB) DeleteImportsByFile(fileID int64) error {
 func (db *DB) GetImportsByFile(fileID int64) ([]*types.Import, error) {
 	query := `SELECT id, file_id, source, imported_names, import_type, line_number, imported_symbol FROM imports WHERE file_id = ?`
 
-	rows, err := db.conn.Query(query, fileID)
+	rows, err := db.conn.Query(query, fileID) // Query operations can still be direct
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +375,8 @@ func (db *DB) SaveRelationship(rel *types.Relationship) error {
 		RETURNING id
 	`
 
-	err := db.conn.QueryRow(query, rel.FromSymbolID, rel.ToSymbolID, rel.Type).Scan(&rel.ID)
+	row := db.enqueueQueryRow(query, rel.FromSymbolID, rel.ToSymbolID, rel.Type) // Use enqueueQueryRow
+	err := row.Scan(&rel.ID)
 	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
@@ -469,7 +476,7 @@ func (db *DB) GetSymbol(id int64) (*types.Symbol, error) {
 		FROM symbols
 		WHERE id = ?
 	`
-	symbol, err := scanSymbol(db.conn.QueryRow(query, id))
+	symbol, err := scanSymbol(db.enqueueQueryRow(query, id)) // Use enqueueQueryRow
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -488,7 +495,7 @@ func (db *DB) GetSymbolByName(name string) (*types.Symbol, error) {
 		LIMIT 1
 	`
 
-	symbol, err := scanSymbol(db.conn.QueryRow(query, name))
+	symbol, err := scanSymbol(db.enqueueQueryRow(query, name)) // Use enqueueQueryRow
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -509,7 +516,7 @@ func (db *DB) GetSymbolWithFile(symbolID int64) (*types.Symbol, *types.File, err
 		WHERE s.id = ?
 	`
 
-	row := db.conn.QueryRow(query, symbolID)
+	row := db.enqueueQueryRow(query, symbolID) // Use enqueueQueryRow
 
 	var symbol types.Symbol
 	var file types.File
@@ -557,7 +564,7 @@ func (db *DB) GetRelationshipsForSymbol(symbolID int64) ([]*types.Relationship, 
 		WHERE from_symbol_id = ? OR to_symbol_id = ?
 	`
 
-	rows, err := db.conn.Query(query, symbolID, symbolID)
+	rows, err := db.conn.Query(query, symbolID, symbolID) // Query operations can still be direct
 	if err != nil {
 		return nil, err
 	}
@@ -578,18 +585,19 @@ func (db *DB) GetRelationshipsForSymbol(symbolID int64) ([]*types.Relationship, 
 // SaveReference creates a reference
 func (db *DB) SaveReference(ref *types.Reference) error {
 	query := `
-		INSERT INTO references (symbol_id, file_id, line_number, column_number, reference_type)
+		INSERT INTO code_references (symbol_id, file_id, line_number, column_number, reference_type)
 		VALUES (?, ?, ?, ?, ?)
 		RETURNING id
 	`
 
-	err := db.conn.QueryRow(query,
+	row := db.enqueueQueryRow(query, // Use enqueueQueryRow
 		ref.SymbolID,
 		ref.FileID,
 		ref.LineNumber,
 		ref.ColumnNumber,
 		ref.ReferenceType,
-	).Scan(&ref.ID)
+	)
+	err := row.Scan(&ref.ID)
 
 	return err
 }
@@ -598,11 +606,11 @@ func (db *DB) SaveReference(ref *types.Reference) error {
 func (db *DB) GetReferencesBySymbol(symbolID int64) ([]*types.Reference, error) {
 	query := `
 		SELECT id, symbol_id, file_id, line_number, column_number, reference_type
-		FROM references
+		FROM code_references
 		WHERE symbol_id = ?
 	`
 
-	rows, err := db.conn.Query(query, symbolID)
+	rows, err := db.conn.Query(query, symbolID) // Query operations can still be direct
 	if err != nil {
 		return nil, err
 	}
@@ -629,7 +637,7 @@ func (db *DB) GetAllFilesForProject(projectID int64) ([]*types.File, error) {
 		ORDER BY relative_path
 	`
 
-	rows, err := db.conn.Query(query, projectID)
+	rows, err := db.conn.Query(query, projectID) // Query operations can still be direct
 	if err != nil {
 		return nil, err
 	}
@@ -655,12 +663,12 @@ func (db *DB) GetAllFilesForProject(projectID int64) ([]*types.File, error) {
 func (db *DB) GetReferencesByFile(fileID int64) ([]*types.Reference, error) {
 	query := `
 		SELECT id, symbol_id, file_id, line_number, column_number, reference_type
-		FROM references
+		FROM code_references
 		WHERE file_id = ?
 		ORDER BY line_number
 	`
 
-	rows, err := db.conn.Query(query, fileID)
+	rows, err := db.conn.Query(query, fileID) // Query operations can still be direct
 	if err != nil {
 		return nil, err
 	}
@@ -690,7 +698,7 @@ func (db *DB) GetMethodsForType(typeSymbolID int64) ([]*types.Symbol, error) {
 		ORDER BY name
 	`
 
-	rows, err := db.conn.Query(query, typeSymbolID, types.SymbolTypeMethod)
+	rows, err := db.conn.Query(query, typeSymbolID, types.SymbolTypeMethod) // Query operations can still be direct
 	if err != nil {
 		return nil, err
 	}

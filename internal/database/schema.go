@@ -74,8 +74,8 @@ CREATE TABLE IF NOT EXISTS relationships (
     UNIQUE(from_symbol_id, to_symbol_id, relationship_type)
 );
 
--- References table (where symbols are used)
-CREATE TABLE IF NOT EXISTS references (
+-- Code References table (where symbols are used)
+CREATE TABLE IF NOT EXISTS code_references (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol_id INTEGER NOT NULL,
     file_id INTEGER NOT NULL,
@@ -104,8 +104,8 @@ CREATE INDEX IF NOT EXISTS idx_relationships_from ON relationships(from_symbol_i
 CREATE INDEX IF NOT EXISTS idx_relationships_to ON relationships(to_symbol_id);
 CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(relationship_type);
 
-CREATE INDEX IF NOT EXISTS idx_references_symbol ON references(symbol_id);
-CREATE INDEX IF NOT EXISTS idx_references_file ON references(file_id);
+CREATE INDEX IF NOT EXISTS idx_code_references_symbol ON code_references(symbol_id);
+CREATE INDEX IF NOT EXISTS idx_code_references_file ON code_references(file_id);
 
 -- Full-text search for symbols (for advanced queries)
 CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(

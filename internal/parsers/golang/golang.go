@@ -5,6 +5,7 @@ import (
 	goparser "go/parser" // Alias standard library parser
 	"go/token"
 	"strings"
+	"fmt" // Added fmt import for exprToString default case
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
 	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
@@ -106,7 +107,7 @@ func (p *Parser) extractFunction(fn *ast.FuncDecl, fset *token.FileSet, file *as
 
 	// Extract documentation
 	if fn.Doc != nil {
-		symbol.Documentation = fn.Doc.Text()
+		symbol.Documentation = strings.TrimSpace(fn.Doc.Text())
 	}
 
 	return symbol
@@ -148,7 +149,7 @@ func (p *Parser) extractGenDecl(decl *ast.GenDecl, fset *token.FileSet, file *as
 				}
 
 				if decl.Doc != nil {
-					symbol.Documentation = decl.Doc.Text()
+					symbol.Documentation = strings.TrimSpace(decl.Doc.Text())
 				}
 
 				symbols = append(symbols, symbol)
@@ -187,7 +188,7 @@ func (p *Parser) extractTypeSpec(spec *ast.TypeSpec, decl *ast.GenDecl, fset *to
 
 	// Documentation
 	if decl.Doc != nil {
-		symbol.Documentation = decl.Doc.Text()
+		symbol.Documentation = strings.TrimSpace(decl.Doc.Text())
 	}
 
 	return symbol
@@ -202,40 +203,92 @@ func (p *Parser) buildFunctionSignature(fn *ast.FuncDecl) string {
 	// Add receiver for methods
 	if fn.Recv != nil {
 		sig.WriteString("(")
-		// Simplified - would need proper formatting
-		sig.WriteString("receiver")
+		for i, field := range fn.Recv.List {
+			if i > 0 {
+				sig.WriteString(", ")
+			}
+			if len(field.Names) > 0 {
+				sig.WriteString(field.Names[0].Name + " ")
+			}
+			sig.WriteString(p.exprToString(field.Type))
+		}
 		sig.WriteString(") ")
 	}
 
 	sig.WriteString(fn.Name.Name)
 	sig.WriteString("(")
 
-	// Parameters (simplified)
+	// Parameters
 	if fn.Type.Params != nil {
 		for i, field := range fn.Type.Params.List {
 			if i > 0 {
 				sig.WriteString(", ")
 			}
-			// Add parameter names/types (simplified)
-			if len(field.Names) > 0 {
-				sig.WriteString(field.Names[0].Name)
-			} else {
-				sig.WriteString("_")
+			for j, name := range field.Names {
+				if j > 0 {
+					sig.WriteString(", ")
+				}
+				sig.WriteString(name.Name)
 			}
+			if len(field.Names) > 0 { // Only add space if there are names
+				sig.WriteString(" ")
+			}
+			sig.WriteString(p.exprToString(field.Type))
 		}
 	}
 
 	sig.WriteString(")")
 
-	// Return type (simplified)
+	// Return type
 	if fn.Type.Results != nil && len(fn.Type.Results.List) > 0 {
 		sig.WriteString(" ")
 		if len(fn.Type.Results.List) > 1 {
-			sig.WriteString("(...)")
-		} else {
-			sig.WriteString("...")
+			sig.WriteString("(")
+		}
+		for i, field := range fn.Type.Results.List {
+			if i > 0 {
+				sig.WriteString(", ")
+			}
+			// Result fields can have names, but often don't
+			for j, name := range field.Names {
+				if j > 0 {
+					sig.WriteString(", ")
+				}
+				sig.WriteString(name.Name)
+			}
+			if len(field.Names) > 0 {
+				sig.WriteString(" ")
+			}
+			sig.WriteString(p.exprToString(field.Type))
+		}
+		if len(fn.Type.Results.List) > 1 {
+			sig.WriteString(")")
 		}
 	}
 
 	return sig.String()
+}
+
+// exprToString converts an AST expression to its string representation
+func (p *Parser) exprToString(expr ast.Expr) string {
+	var sb strings.Builder
+	// This is a simplified conversion. A full implementation would need to handle
+	// various expression types (e.g., StarExpr, ArrayType, MapType, FuncType, etc.)
+	// For now, we'll just use the string representation of the expression.
+	switch e := expr.(type) {
+	case *ast.Ident:
+		sb.WriteString(e.Name)
+	case *ast.StarExpr:
+		sb.WriteString("*" + p.exprToString(e.X))
+	case *ast.ArrayType:
+		sb.WriteString("[]" + p.exprToString(e.Elt))
+	case *ast.MapType:
+		sb.WriteString("map[" + p.exprToString(e.Key) + "]" + p.exprToString(e.Value))
+	case *ast.FuncType:
+		sb.WriteString("func")
+		// TODO: Recursively build function type signature
+	default:
+		sb.WriteString(fmt.Sprintf("%v", expr))
+	}
+	return sb.String()
 }

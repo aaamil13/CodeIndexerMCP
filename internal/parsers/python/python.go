@@ -103,7 +103,7 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 				StartLine:     lineNumber,
 				Visibility:    p.getVisibility(className),
 				IsExported:    p.isExported(className),
-				Documentation: strings.Join(docstringLines, "\n"),
+				Documentation: strings.TrimSpace(strings.Join(docstringLines, "\n")), // Trim documentation
 			}
 
 			if parentClasses != "" {
@@ -151,7 +151,7 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 				Visibility:    p.getVisibility(funcName),
 				IsExported:    p.isExported(funcName),
 				IsAsync:       isAsync,
-				Documentation: strings.Join(docstringLines, "\n"),
+				Documentation: strings.TrimSpace(strings.Join(docstringLines, "\n")), // Trim documentation
 			}
 
 			// Check for decorators
@@ -224,7 +224,8 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 				varName := match[1]
 				if !isKeyword(varName) {
 					symbolType := types.SymbolTypeVariable
-					if strings.ToUpper(varName) == varName {
+					// Python constants are typically all caps
+					if varName == strings.ToUpper(varName) && strings.ContainsAny(varName, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
 						symbolType = types.SymbolTypeConstant
 					}
 
@@ -254,22 +255,24 @@ func (p *Parser) buildSignature(name, params, returnType string, isAsync bool) s
 	if returnType != "" {
 		sig += " -> " + returnType
 	}
+	sig += ":" // Add colon for Python function signature
 	return sig
 }
 
 // getVisibility determines visibility based on naming convention
 func (p *Parser) getVisibility(name string) types.Visibility {
 	if strings.HasPrefix(name, "__") && !strings.HasSuffix(name, "__") {
-		return types.VisibilityPrivate
+		return types.VisibilityInternal // Python's name mangling
 	}
 	if strings.HasPrefix(name, "_") {
-		return types.VisibilityProtected
+		return types.VisibilityPrivate // Convention for private
 	}
 	return types.VisibilityPublic
 }
 
 // isExported checks if a symbol is exported (public)
 func (p *Parser) isExported(name string) bool {
+	// In Python, symbols starting with an underscore are generally considered non-exported/private
 	return !strings.HasPrefix(name, "_")
 }
 

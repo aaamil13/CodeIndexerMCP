@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"fmt"
 	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
 
@@ -137,5 +138,3 @@ func createDiagnosticFromMissingMethod(missing *types.MissingMethod) Diagnostic 
 	}
 }
 
-// Import fmt for diagnostic functions
-import "fmt"

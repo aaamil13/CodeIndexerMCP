@@ -84,8 +84,11 @@ type AutoFixSuggestion struct {
 
 // DependencyGraph represents the dependency graph of the project
 type DependencyGraph struct {
-	Nodes []*DependencyNode `json:"nodes"`
-	Edges []*DependencyEdge `json:"edges"`
+	Nodes              []*DependencyNode `json:"nodes"`
+	Edges              []*DependencyEdge `json:"edges"`
+	DirectDependencies []*Symbol         `json:"direct_dependencies"`
+	DirectDependents   []*Symbol         `json:"direct_dependents"`
+	CouplingScore      float64           `json:"coupling_score"`
 }
 
 // DependencyNode represents a node in the dependency graph

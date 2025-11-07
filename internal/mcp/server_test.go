@@ -15,9 +15,8 @@ func setupTestMCPServer(t *testing.T) (*Server, *core.Indexer, string) {
 	projectPath := filepath.Join(tmpDir, "test-project")
 	os.MkdirAll(projectPath, 0755)
 
-	dbPath := filepath.Join(tmpDir, "test.db")
 
-	indexer, err := core.New(projectPath, dbPath)
+	indexer, err := core.NewIndexer(projectPath, nil)
 	if err != nil {
 		t.Fatalf("Failed to create indexer: %v", err)
 	}
@@ -129,7 +128,7 @@ func TestFunction() string {
 		t.Fatal("Expected map result")
 	}
 
-	symbols, ok := resultMap["symbols"]
+	_, ok = resultMap["symbols"]
 	if !ok {
 		t.Error("Expected symbols in result")
 	}
@@ -175,8 +174,8 @@ func (s *Server) Start() {
 		t.Fatal("Expected FileStructure result")
 	}
 
-	if structure.File == nil {
-		t.Error("Expected file in structure")
+	if structure.FilePath == "" {
+		t.Error("Expected file path in structure")
 	}
 
 	if len(structure.Symbols) == 0 {
@@ -222,8 +221,8 @@ func Func1() {}`,
 		t.Errorf("Expected 2 files, got %d", overview.TotalFiles)
 	}
 
-	if len(overview.Languages) == 0 {
-		t.Error("Expected languages in overview")
+	if len(overview.Project.LanguageStats) == 0 {
+		t.Error("Expected language stats in overview")
 	}
 }
 
@@ -389,8 +388,8 @@ func Complex(x int) int {
 		t.Fatal("Expected CodeMetrics result")
 	}
 
-	if metrics.Symbol == nil {
-		t.Error("Expected symbol in metrics")
+	if metrics.FunctionName == "" {
+		t.Error("Expected function name in metrics")
 	}
 
 	if metrics.CyclomaticComplexity == 0 {

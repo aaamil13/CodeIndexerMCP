@@ -243,16 +243,19 @@ func (idx *Indexer) IndexFile(filePath string) error {
 	// Make path relative to project
 	relPath, err := filepath.Rel(idx.projectPath, filePath)
 	if err != nil {
+		idx.logger.Errorf("Failed to get relative path for %s: %v", filePath, err)
 		return err
 	}
 
 	// Check if should ignore
 	if idx.ignoreMatcher.ShouldIgnore(relPath) {
+		idx.logger.Debugf("Ignoring file: %s", relPath)
 		return nil
 	}
 
 	// Check if we can parse this file
 	if _, err := idx.parsers.GetParserForFile(filePath); err != nil {
+		idx.logger.Debugf("Skipping unsupported file: %s", relPath)
 		return nil // Skip unsupported files silently
 	}
 
@@ -261,12 +264,14 @@ func (idx *Indexer) IndexFile(filePath string) error {
 	// Get file info
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
+		idx.logger.Errorf("Failed to get file info for %s: %v", relPath, err)
 		return err
 	}
 
 	// Read file content
 	content, err := os.ReadFile(filePath)
 	if err != nil {
+		idx.logger.Errorf("Failed to read file content for %s: %v", relPath, err)
 		return err
 	}
 
@@ -276,6 +281,7 @@ func (idx *Indexer) IndexFile(filePath string) error {
 	// Check if file has changed
 	existingFile, err := idx.db.GetFileByPath(idx.project.ID, relPath)
 	if err != nil {
+		idx.logger.Errorf("Failed to get existing file from DB for %s: %v", relPath, err)
 		return err
 	}
 
@@ -288,6 +294,7 @@ func (idx *Indexer) IndexFile(filePath string) error {
 	// Parse file
 	parser, err := idx.parsers.GetParserForFile(filePath)
 	if err != nil {
+		idx.logger.Errorf("Failed to get parser for %s: %v", relPath, err)
 		return err
 	}
 
@@ -316,7 +323,7 @@ func (idx *Indexer) IndexFile(filePath string) error {
 		}
 
 		if err := idx.db.SaveFile(file); err != nil { // Use idx.db directly
-			return err
+			return fmt.Errorf("failed to save file %s: %w", relPath, err)
 		}
 
 		// Delete old symbols/imports for this file
@@ -329,7 +336,7 @@ func (idx *Indexer) IndexFile(filePath string) error {
 		for _, symbol := range parseResult.Symbols {
 			symbol.FileID = file.ID
 			if err := idx.db.SaveSymbol(symbol); err != nil { // Use idx.db directly
-				return err
+				return fmt.Errorf("failed to save symbol %s in file %s: %w", symbol.Name, relPath, err)
 			}
 		}
 
@@ -337,14 +344,14 @@ func (idx *Indexer) IndexFile(filePath string) error {
 		for _, imp := range parseResult.Imports {
 			imp.FileID = file.ID
 			if err := idx.db.SaveImport(imp); err != nil { // Use idx.db directly
-				return err
+				return fmt.Errorf("failed to save import %s in file %s: %w", imp.Source, relPath, err)
 			}
 		}
 
 		// Save relationships
 		for _, rel := range parseResult.Relationships {
 			if err := idx.db.SaveRelationship(rel); err != nil { // Use idx.db directly
-				return err
+				return fmt.Errorf("failed to save relationship in file %s: %w", relPath, err)
 			}
 		}
 
@@ -367,6 +374,7 @@ func (idx *Indexer) scanFiles() ([]string, error) {
 
 	err := filepath.Walk(idx.projectPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
+			idx.logger.Errorf("Error walking file %s: %v", path, err)
 			return err
 		}
 
@@ -375,6 +383,7 @@ func (idx *Indexer) scanFiles() ([]string, error) {
 			// Check if should ignore this directory
 			relPath, _ := filepath.Rel(idx.projectPath, path)
 			if relPath != "." && idx.ignoreMatcher.ShouldIgnore(relPath) {
+				idx.logger.Debugf("Ignoring directory: %s", relPath)
 				return filepath.SkipDir
 			}
 			return nil
@@ -383,16 +392,23 @@ func (idx *Indexer) scanFiles() ([]string, error) {
 		// Check if should ignore this file
 		relPath, _ := filepath.Rel(idx.projectPath, path)
 		if idx.ignoreMatcher.ShouldIgnore(relPath) {
+			idx.logger.Debugf("Ignoring file: %s", relPath)
 			return nil
 		}
 
 		// Check if we can parse this file
 		if _, err := idx.parsers.GetParserForFile(path); err == nil {
 			files = append(files, path)
+		} else {
+			idx.logger.Debugf("No parser found for file: %s", relPath)
 		}
 
 		return nil
 	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan files: %w", err)
+	}
 
 	return files, err
 }
@@ -404,12 +420,15 @@ func (idx *Indexer) indexFiles(files []string) error {
 	errors := make(chan error, len(files))
 	var wg sync.WaitGroup
 
+	idx.logger.Infof("Starting %d workers for file indexing", numWorkers)
+
 	// Start workers
 	for w := 0; w < numWorkers; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for filePath := range jobs {
+				idx.logger.Debugf("Worker %d indexing file: %s", w, filePath) // Log worker activity
 				if err := idx.IndexFile(filePath); err != nil {
 					errors <- fmt.Errorf("failed to index %s: %w", filePath, err)
 				}
@@ -434,10 +453,12 @@ func (idx *Indexer) indexFiles(files []string) error {
 	}
 
 	if len(errs) > 0 {
+		idx.logger.Errorf("Encountered %d errors during file indexing", len(errs))
 		// Return first error (could be enhanced to return all)
 		return errs[0]
 	}
 
+	idx.logger.Info("All workers completed file indexing")
 	return nil
 }
 
@@ -696,4 +717,9 @@ func (idx *Indexer) CalculateTypeSafetyScore(filePath string) (*types.TypeSafety
 		return nil, fmt.Errorf("file not found: %w", err)
 	}
 	return idx.typeValidator.CalculateTypeSafetyScore(file.ID)
+}
+
+// GetProject returns the current project
+func (idx *Indexer) GetProject() *types.Project {
+	return idx.project
 }

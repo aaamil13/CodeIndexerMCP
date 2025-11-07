@@ -10,7 +10,7 @@ import (
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/core"
 	"github.com/aaamil13/CodeIndexerMCP/internal/mcp"
-	"github.com/aaamil13/CodeIndexerMCP/internal/utils"
+	// "github.com/aaamil13/CodeIndexerMCP/internal/utils" // Removed unused import
 	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
 
@@ -252,7 +252,7 @@ func runOverview(projectPath string) error {
 }
 
 func printUsage() {
-	fmt.Println(`Code Indexer MCP - Intelligent code indexer for AI agents
+	fmt.Print(`Code Indexer MCP - Intelligent code indexer for AI agents
 
 Usage:
   code-indexer <command> [arguments]
