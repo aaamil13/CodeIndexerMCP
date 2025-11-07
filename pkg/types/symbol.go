@@ -19,6 +19,7 @@ const (
 	SymbolTypeProperty    SymbolType = "property"    // For properties in languages like C#, Kotlin, Swift
 	SymbolTypeField       SymbolType = "field"       // For fields/member variables in classes/structs
 	SymbolTypeConstructor SymbolType = "constructor" // For class constructors
+	SymbolTypeDecorator   SymbolType = "decorator"   // For Python decorators
 )
 
 // Visibility represents symbol visibility
