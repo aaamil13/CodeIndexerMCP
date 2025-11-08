@@ -21,7 +21,7 @@ func NewSnippetExtractor(db *database.Manager) *SnippetExtractor {
 }
 
 // ExtractSmartSnippet extracts a self-contained code snippet
-func (se *SnippetExtractor) ExtractSmartSnippet(symbol *model.Symbol, includeTests bool) (*SmartSnippet, error) {
+func (se *SnippetExtractor) ExtractSmartSnippet(symbol *model.Symbol, includeTests bool) (*model.SmartSnippet, error) {
 	// TODO: Implement after DB methods are available
 	// // Get the symbol
 	// if symbol == nil {
@@ -60,7 +60,7 @@ func (se *SnippetExtractor) ExtractSmartSnippet(symbol *model.Symbol, includeTes
 	// // Check if complete (has all dependencies resolved)
 	// complete := se.isComplete(symbol, dependencies)
 
-	// return &SmartSnippet{
+	// return &model.SmartSnippet{
 	// 	Symbol:        symbol,
 	// 	Code:          code,
 	// 	Dependencies:  dependencies,

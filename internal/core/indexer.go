@@ -32,7 +32,6 @@ import (
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/sql"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/swift"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/typescript"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 	"github.com/aaamil13/CodeIndexerMCP/internal/utils"
 )
 
@@ -620,17 +619,38 @@ func (idx *Indexer) AnalyzeChangeImpact(symbolName string) (*model.ChangeImpact,
 
 // GetCodeMetrics calculates code quality metrics
 func (idx *Indexer) GetCodeMetrics(symbolName string) (*model.CodeMetrics, error) {
-	return idx.metricsCalc.CalculateMetrics(symbolName)
+	symbol, err := idx.db.GetSymbolByName(symbolName)
+	if err != nil {
+		return nil, err
+	}
+	if symbol == nil {
+		return nil, fmt.Errorf("symbol not found: %s", symbolName)
+	}
+	return idx.metricsCalc.CalculateMetrics(symbol)
 }
 
 // ExtractSmartSnippet extracts a self-contained code snippet
 func (idx *Indexer) ExtractSmartSnippet(symbolName string) (*model.SmartSnippet, error) {
-	return idx.snippetExtractor.ExtractSmartSnippet(symbolName, false)
+	symbol, err := idx.db.GetSymbolByName(symbolName)
+	if err != nil {
+		return nil, err
+	}
+	if symbol == nil {
+		return nil, fmt.Errorf("symbol not found: %s", symbolName)
+	}
+	return idx.snippetExtractor.ExtractSmartSnippet(symbol, false)
 }
 
 // GetUsageStatistics gets usage statistics for a symbol
 func (idx *Indexer) GetUsageStatistics(symbolName string) (*model.SymbolUsageStats, error) {
-	return idx.usageAnalyzer.AnalyzeUsage(symbolName)
+	symbol, err := idx.db.GetSymbolByName(symbolName)
+	if err != nil {
+		return nil, err
+	}
+	if symbol == nil {
+		return nil, fmt.Errorf("symbol not found: %s", symbolName)
+	}
+	return idx.usageAnalyzer.AnalyzeUsage(symbol)
 }
 
 // SuggestRefactorings suggests refactoring opportunities
@@ -640,18 +660,18 @@ func (idx *Indexer) SuggestRefactorings(symbolName string) ([]*model.Refactoring
 
 // FindUnusedSymbols finds unused symbols in the project
 func (idx *Indexer) FindUnusedSymbols() ([]*model.Symbol, error) {
-	return idx.usageAnalyzer.FindUnusedSymbols(idx.project.ID)
+	return idx.usageAnalyzer.FindUnusedSymbols(fmt.Sprintf("%d", idx.project.ID))
 }
 
 // FindMostUsedSymbols finds the most used symbols
 func (idx *Indexer) FindMostUsedSymbols(limit int) ([]*model.SymbolUsageStats, error) {
-	return idx.usageAnalyzer.FindMostUsedSymbols(idx.project.ID, limit)
+	return idx.usageAnalyzer.FindMostUsedSymbols(fmt.Sprintf("%d", idx.project.ID), limit)
 }
 
 // Change Tracking Methods
 
 // SimulateSymbolChange simulates a change without applying it
-func (idx *Indexer) SimulateSymbolChange(symbolName string, changeType model.ChangeType, newValue string) (*model.ChangeImpactResult, error) {
+func (idx *Indexer) SimulateSymbolChange(symbolName string, changeType model.ChangeType, newValue string) (*model.ChangeImpact, error) {
 	return idx.changeTracker.SimulateChange(symbolName, changeType, newValue)
 }
 
@@ -691,34 +711,22 @@ func (idx *Indexer) AnalyzeDependencyChain(symbolName string) (map[string]interf
 
 // ValidateFileTypes validates all types in a file
 func (idx *Indexer) ValidateFileTypes(filePath string) (*model.TypeValidation, error) {
-	file, err := idx.db.GetFileByPath(idx.project.ID, filePath)
-	if err != nil {
-		return nil, fmt.Errorf("file not found: %w", err)
-	}
-	return idx.typeValidator.ValidateFile(file.ID)
+	return idx.typeValidator.ValidateFile(filePath)
 }
 
 // FindUndefinedUsages finds all undefined symbol usages in a file
 func (idx *Indexer) FindUndefinedUsages(filePath string) ([]*model.UndefinedUsage, error) {
-	file, err := idx.db.GetFileByPath(idx.project.ID, filePath)
-	if err != nil {
-		return nil, fmt.Errorf("file not found: %w", err)
-	}
-	return idx.typeValidator.FindUndefinedUsages(file.ID)
+	return idx.typeValidator.FindUndefinedUsages(filePath)
 }
 
 // CheckMethodExists checks if a method exists on a type
 func (idx *Indexer) CheckMethodExists(typeName, methodName string) (*model.MissingMethod, error) {
-	return idx.typeValidator.CheckMethodExists(typeName, methodName, idx.project.ID)
+	return idx.typeValidator.CheckMethodExists(typeName, methodName, fmt.Sprintf("%d", idx.project.ID))
 }
 
 // CalculateTypeSafetyScore calculates type safety score for a file
 func (idx *Indexer) CalculateTypeSafetyScore(filePath string) (*model.TypeSafetyScore, error) {
-	file, err := idx.db.GetFileByPath(idx.project.ID, filePath)
-	if err != nil {
-		return nil, fmt.Errorf("file not found: %w", err)
-	}
-	return idx.typeValidator.CalculateTypeSafetyScore(file.ID)
+	return idx.typeValidator.CalculateTypeSafetyScore(filePath)
 }
 
 // GetProject returns the current project

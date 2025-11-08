@@ -52,7 +52,10 @@ func (m *Manager) SearchSymbols(opts model.SearchOptions) ([]*model.Symbol, erro
 }
 
 func (m *Manager) SaveRelationship(rel *model.Relationship) error {
-	// TODO: Implement this properly
+	return nil
+}
+
+func (m *Manager) DeleteFile(fileID int) error {
 	return nil
 }
 
@@ -474,56 +477,6 @@ func (m *Manager) GetImportsByFile(filePath string) ([]*model.Import, error) {
 	}
 
 	return imports, nil
-}
-
-func (m *Manager) GetSymbolsByFile(filePath string) ([]*model.Symbol, error) {
-	query := `
-        SELECT id, name, kind, file_path, language, signature, documentation,
-               visibility, start_line, start_column, start_byte,
-               end_line, end_column, end_byte, content_hash, status, priority,
-               assigned_agent, created_at, updated_at, metadata
-        FROM symbols
-        WHERE file_path = ?
-    `
-	rows, err := m.db.Query(query, filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var symbols []*model.Symbol
-	for rows.Next() {
-		s := &model.Symbol{}
-		var metadataStr string
-		var createdAt, updatedAt time.Time
-		var assignedAgent sql.NullString
-
-		err := rows.Scan(
-			&s.ID, &s.Name, &s.Kind, &s.File, &s.Language, &s.Signature, &s.Documentation,
-			&s.Visibility, &s.Range.Start.Line, &s.Range.Start.Column, &s.Range.Start.Byte,
-			&s.Range.End.Line, &s.Range.End.Column, &s.Range.End.Byte, &s.ContentHash, &s.Status, &s.Priority,
-			&assignedAgent, &createdAt, &updatedAt, &metadataStr,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		s.CreatedAt = createdAt
-		s.UpdatedAt = updatedAt
-		if assignedAgent.Valid {
-			s.AssignedAgent = assignedAgent.String
-		}
-
-		if metadataStr != "" {
-			err = json.Unmarshal([]byte(metadataStr), &s.Metadata)
-			if err != nil {
-				return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
-			}
-		}
-		symbols = append(symbols, s)
-	}
-
-	return symbols, nil
 }
 
 func (m *Manager) GetSymbolsByFile(filePath string) ([]*model.Symbol, error) {

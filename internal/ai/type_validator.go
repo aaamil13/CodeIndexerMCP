@@ -21,15 +21,15 @@ func NewTypeValidator(db *database.Manager) *TypeValidator {
 }
 
 // ValidateFile validates all types in a file
-func (tv *TypeValidator) ValidateFile(filePath string) (*TypeValidation, error) {
+func (tv *TypeValidator) ValidateFile(filePath string) (*model.TypeValidation, error) {
 	// TODO: Implement after DB methods are available
-	// validation := &TypeValidation{
+	// validation := &model.TypeValidation{
 	// 	File:             filePath,
 	// 	IsValid:          true,
-	// 	UndefinedSymbols: make([]*UndefinedUsage, 0),
-	// 	TypeMismatches:   make([]*TypeMismatch, 0),
-	// 	MissingMethods:   make([]*MissingMethod, 0),
-	// 	InvalidCalls:     make([]*InvalidCall, 0),
+	// 	UndefinedSymbols: make([]*model.UndefinedUsage, 0),
+	// 	TypeMismatches:   make([]*model.TypeMismatch, 0),
+	// 	MissingMethods:   make([]*model.MissingMethod, 0),
+	// 	InvalidCalls:     make([]*model.InvalidCall, 0),
 	// 	UnusedImports:    make([]*model.Import, 0),
 	// 	Suggestions:      make([]string, 0),
 	// }
@@ -60,7 +60,7 @@ func (tv *TypeValidator) ValidateFile(filePath string) (*TypeValidation, error) 
 	// 		// Symbol not found - undefined usage
 	// 		context := ref.ReferenceType
 
-	// 		undefined := &UndefinedUsage{
+	// 		undefined := &model.UndefinedUsage{
 	// 			SymbolName:  "unknown",
 	// 			FilePath:    filePath,
 	// 			Line:        ref.Line,
@@ -120,7 +120,7 @@ func (tv *TypeValidator) ValidateFile(filePath string) (*TypeValidation, error) 
 }
 
 // FindUndefinedUsages finds all undefined symbols in a file
-func (tv *TypeValidator) FindUndefinedUsages(filePath string) ([]*UndefinedUsage, error) {
+func (tv *TypeValidator) FindUndefinedUsages(filePath string) ([]*model.UndefinedUsage, error) {
 	// TODO: Implement after DB methods are available
 	// validation, err := tv.ValidateFile(filePath)
 	// if err != nil {
@@ -131,12 +131,12 @@ func (tv *TypeValidator) FindUndefinedUsages(filePath string) ([]*UndefinedUsage
 }
 
 // CheckMethodExists checks if a method exists on a type
-func (tv *TypeValidator) CheckMethodExists(typeName, methodName string, projectID string) (*MissingMethod, error) {
+func (tv *TypeValidator) CheckMethodExists(typeName, methodName string, projectID string) (*model.MissingMethod, error) {
 	// TODO: Implement after DB methods are available
 	// // Find the type symbol
 	// typeSymbol, err := tv.db.GetSymbolByName(typeName)
 	// if err != nil {
-	// 	return &MissingMethod{
+	// 	return &model.MissingMethod{
 	// 		TypeName:   typeName,
 	// 		MethodName: methodName,
 	// 		Suggestion: fmt.Sprintf("Type '%s' not found", typeName),
@@ -157,7 +157,7 @@ func (tv *TypeValidator) CheckMethodExists(typeName, methodName string, projectI
 	// }
 
 	// // Method doesn't exist - build response
-	// missing := &MissingMethod{
+	// missing := &model.MissingMethod{
 	// 	TypeName:         typeName,
 	// 	MethodName:       methodName,
 	// 	AvailableMethods: make([]string, 0),
@@ -264,7 +264,7 @@ func (tv *TypeValidator) CheckTypeCompatibility(type1, type2 string) bool {
 }
 
 // CalculateTypeSafetyScore calculates type safety score for a file or project
-func (tv *TypeValidator) CalculateTypeSafetyScore(filePath string) (*TypeSafetyScore, error) {
+func (tv *TypeValidator) CalculateTypeSafetyScore(filePath string) (*model.TypeSafetyScore, error) {
 	// TODO: Implement after DB methods are available
 	// validation, err := tv.ValidateFile(filePath)
 	// if err != nil {
@@ -276,7 +276,7 @@ func (tv *TypeValidator) CalculateTypeSafetyScore(filePath string) (*TypeSafetyS
 	// 	return nil, err
 	// }
 
-	// score := &TypeSafetyScore{
+	// score := &model.TypeSafetyScore{
 	// 	TotalSymbols:   len(symbols),
 	// 	TypedSymbols:   0,
 	// 	UntypedSymbols: 0,
@@ -425,7 +425,7 @@ func min(a, b, c int) int {
 	return c
 }
 
-func (tv *TypeValidator) validateReference(ref *model.Reference, refSymbol *model.Symbol, file string, validation *TypeValidation) {
+func (tv *TypeValidator) validateReference(ref *model.Reference, refSymbol *model.Symbol, file string, validation *model.TypeValidation) {
 	// Check if this is a method call on an object
 	refType := ref.ReferenceType
 	if strings.Contains(refType, ".") {

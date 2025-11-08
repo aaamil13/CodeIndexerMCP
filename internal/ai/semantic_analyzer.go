@@ -23,14 +23,14 @@ func NewSemanticAnalyzer(db *database.Manager) *SemanticAnalyzer {
 }
 
 // AnalyzeProject performs full semantic analysis on a project
-func (sa *SemanticAnalyzer) AnalyzeProject(projectID string) (*SemanticAnalysisResult, error) {
+func (sa *SemanticAnalyzer) AnalyzeProject(projectID string) (*model.SemanticAnalysisResult, error) {
 	// TODO: Implement after DB methods are available
-	// result := &SemanticAnalysisResult{
+	// result := &model.SemanticAnalysisResult{
 	// 	ProjectID:           projectID,
-	// 	TypeErrors:          make([]*TypeMismatch, 0),
-	// 	UndefinedReferences: make([]*UndefinedUsage, 0),
+	// 	TypeErrors:          make([]*model.TypeMismatch, 0),
+	// 	UndefinedReferences: make([]*model.UndefinedUsage, 0),
 	// 	UnusedSymbols:       make([]*model.Symbol, 0),
-	// 	CircularDeps:        make([]*CircularDependency, 0),
+	// 	CircularDeps:        make([]*model.CircularDependency, 0),
 	// 	Warnings:            make([]string, 0),
 	// 	Metrics:             make(map[string]interface{}),
 	// }
@@ -81,14 +81,14 @@ func (sa *SemanticAnalyzer) AnalyzeProject(projectID string) (*SemanticAnalysisR
 }
 
 // InferType infers the type of a symbol
-func (sa *SemanticAnalyzer) InferType(symbolID string) (*TypeInference, error) {
+func (sa *SemanticAnalyzer) InferType(symbolID string) (*model.TypeInference, error) {
 	// TODO: Implement after DB methods are available
 	// symbol, err := sa.db.GetSymbol(symbolID)
 	// if err != nil {
 	// 	return nil, err
 	// }
 
-	// inference := &TypeInference{
+	// inference := &model.TypeInference{
 	// 	SymbolName: symbol.Name,
 	// 	Confidence: 0.5, // Default confidence
 	// }
@@ -293,9 +293,9 @@ func (sa *SemanticAnalyzer) findUnusedSymbols(projectID string) ([]*model.Symbol
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (sa *SemanticAnalyzer) detectCircularDependencies(projectID string) []*CircularDependency {
+func (sa *SemanticAnalyzer) detectCircularDependencies(projectID string) []*model.CircularDependency {
 	// TODO: Implement after DB methods are available
-	// circular := make([]*CircularDependency, 0)
+	// circular := make([]*model.CircularDependency, 0)
 
 	// files, err := sa.db.GetAllFilesForProject(projectID)
 	// if err != nil {
@@ -355,7 +355,7 @@ func (sa *SemanticAnalyzer) detectCircularDependencies(projectID string) []*Circ
 	// for _, file := range files {
 	// 	if !visited[file] {
 	// 		if cycle := dfs(file, make([]string, 0)); cycle != nil {
-	// 			circular = append(circular, &CircularDependency{
+	// 			circular = append(circular, &model.CircularDependency{
 	// 				Files:       cycle,
 	// 				Description: fmt.Sprintf("Circular dependency detected: %s", strings.Join(cycle, " -> ")),
 	// 				Severity:    "warning",
@@ -392,11 +392,11 @@ func (sa *SemanticAnalyzer) calculateQualityScore(result *SemanticAnalysisResult
 }
 
 // AnalyzeCallGraph builds a call graph for the project
-func (sa *SemanticAnalyzer) AnalyzeCallGraph(projectID string) (*CallGraph, error) {
+func (sa *SemanticAnalyzer) AnalyzeCallGraph(projectID string) (*model.CallGraph, error) {
 	// TODO: Implement after DB methods are available
-	// callGraph := &CallGraph{
-	// 	Nodes: make([]*CallGraphNode, 0),
-	// 	Edges: make([]*CallGraphEdge, 0),
+	// callGraph := &model.CallGraph{
+	// 	Nodes: make([]*model.CallGraphNode, 0),
+	// 	Edges: make([]*model.CallGraphEdge, 0),
 	// }
 
 	// files, err := sa.db.GetAllFilesForProject(projectID)
@@ -405,7 +405,7 @@ func (sa *SemanticAnalyzer) AnalyzeCallGraph(projectID string) (*CallGraph, erro
 	// }
 
 	// // Build nodes (all functions/methods)
-	// symbolToNode := make(map[string]*CallGraphNode)
+	// symbolToNode := make(map[string]*model.CallGraphNode)
 
 	// for _, file := range files {
 	// 	symbols, err := sa.db.GetSymbolsByFile(file)
@@ -415,7 +415,7 @@ func (sa *SemanticAnalyzer) AnalyzeCallGraph(projectID string) (*CallGraph, erro
 
 	// 	for _, symbol := range symbols {
 	// 		if symbol.Kind == "function" || symbol.Kind == "method" { // Use Kind from model.Symbol
-	// 			node := &CallGraphNode{
+	// 			node := &model.CallGraphNode{
 	// 				SymbolID:   symbol.ID,
 	// 				SymbolName: symbol.Name,
 	// 				FilePath:   file,
@@ -442,7 +442,7 @@ func (sa *SemanticAnalyzer) AnalyzeCallGraph(projectID string) (*CallGraph, erro
 
 	// 		for _, rel := range relationships {
 	// 			if rel.Type == "calls" { // TODO: use model.RelationshipCalls
-	// 				edge := &CallGraphEdge{
+	// 				edge := &model.CallGraphEdge{
 	// 					FromSymbolID: symbol.ID,
 	// 					ToSymbolID:   rel.ToSymbolID,
 	// 					CallSites:    1, // Simplified

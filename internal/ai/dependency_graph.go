@@ -18,7 +18,7 @@ func NewDependencyGraphBuilder(db *database.Manager) *DependencyGraphBuilder {
 }
 
 // BuildSymbolDependencyGraph builds a dependency graph for a symbol
-func (dgb *DependencyGraphBuilder) BuildSymbolDependencyGraph(symbolName string, maxDepth int) (*DependencyGraph, error) {
+func (dgb *DependencyGraphBuilder) BuildSymbolDependencyGraph(symbolName string, maxDepth int) (*model.DependencyGraph, error) {
 	// TODO: Implement after DB methods are available
 	// symbol, err := dgb.db.GetSymbolByName(symbolName)
 	// if err != nil {
@@ -30,15 +30,15 @@ func (dgb *DependencyGraphBuilder) BuildSymbolDependencyGraph(symbolName string,
 
 	// file := symbol.File
 
-	// graph := &DependencyGraph{
-	// 	Nodes: []*DependencyNode{},
-	// 	Edges: []*DependencyEdge{},
+	// graph := &model.DependencyGraph{
+	// 	Nodes: []*model.DependencyNode{},
+	// 	Edges: []*model.DependencyEdge{},
 	// }
 
 	// visited := make(map[string]bool)
 
 	// // Add root node
-	// rootNode := &DependencyNode{
+	// rootNode := &model.DependencyNode{
 	// 	Symbol: symbol,
 	// 	File:   file,
 	// 	Type:   "symbol",
@@ -55,7 +55,7 @@ func (dgb *DependencyGraphBuilder) BuildSymbolDependencyGraph(symbolName string,
 }
 
 // buildGraphRecursive builds graph recursively
-func (dgb *DependencyGraphBuilder) buildGraphRecursive(symbol *model.Symbol, graph *DependencyGraph, visited map[string]bool, currentDepth, maxDepth int) {
+func (dgb *DependencyGraphBuilder) buildGraphRecursive(symbol *model.Symbol, graph *model.DependencyGraph, visited map[string]bool, currentDepth, maxDepth int) {
 	// TODO: Implement after DB methods are available
 	// if currentDepth >= maxDepth {
 	// 	return
@@ -93,7 +93,7 @@ func (dgb *DependencyGraphBuilder) buildGraphRecursive(symbol *model.Symbol, gra
 	// 	visited[targetSymbolID] = true
 
 	// 	// Add edge
-	// 	edge := &DependencyEdge{
+	// 	edge := &model.DependencyEdge{
 	// 		From:   edgeFrom,
 	// 		To:     edgeTo,
 	// 		Type:   string(rel.Type),
@@ -104,10 +104,10 @@ func (dgb *DependencyGraphBuilder) buildGraphRecursive(symbol *model.Symbol, gra
 }
 
 // BuildFileDependencyGraph builds a dependency graph for a file
-func (dgb *DependencyGraphBuilder) BuildFileDependencyGraph(filePath string, maxDepth int) (*DependencyGraph, error) {
-	graph := &DependencyGraph{
-		Nodes: []*DependencyNode{},
-		Edges: []*DependencyEdge{},
+func (dgb *DependencyGraphBuilder) BuildFileDependencyGraph(filePath string, maxDepth int) (*model.DependencyGraph, error) {
+	graph := &model.DependencyGraph{
+		Nodes: []*model.DependencyNode{},
+		Edges: []*model.DependencyEdge{},
 	}
 
 	// Implementation would track file-level dependencies through imports

@@ -24,19 +24,19 @@ func NewChangeTracker(db *database.Manager) *ChangeTracker {
 }
 
 // AnalyzeSymbolChange analyzes the impact of changing a symbol
-func (ct *ChangeTracker) AnalyzeSymbolChange(change *Change) (*ChangeImpactResult, error) {
-	result := &ChangeImpactResult{
-		Changes:            []*Change{change},
+func (ct *ChangeTracker) AnalyzeSymbolChange(change *model.Change) (*model.ChangeImpact, error) {
+	result := &model.ChangeImpact{
+		Changes:            []*model.Change{change},
 		AffectedSymbols:    []*model.Symbol{},
 		AffectedFiles:      []string{},
-		BrokenReferences:   []*BrokenReference{},
-		RequiredUpdates:    []*RequiredUpdate{},
-		ValidationErrors:   []*ValidationError{},
-		AutoFixSuggestions: []*AutoFixSuggestion{},
+		BrokenReferences:   []*model.BrokenReference{},
+		RequiredUpdates:    []*model.RequiredUpdate{},
+		ValidationErrors:   []*model.ValidationError{},
+		AutoFixSuggestions: []*model.AutoFixSuggestion{},
 	}
 
 	if change.Symbol == nil {
-		return result, fmt.Errorf("change must have a symbol")
+		return result, fmt.Errorf("must have a symbol")
 	}
 
 	// Get impact analysis
@@ -67,17 +67,17 @@ func (ct *ChangeTracker) AnalyzeSymbolChange(change *Change) (*ChangeImpactResul
 }
 
 // analyzeDelete analyzes symbol deletion impact
-func (ct *ChangeTracker) analyzeDelete(change *Change, impact *ChangeImpact, result *ChangeImpactResult) {
+func (ct *ChangeTracker) analyzeDelete(change *model.Change, impact *model.ChangeImpact, result *model.ChangeImpact) {
 	// TODO: Implement after DB methods are available
 }
 
 // analyzeRename analyzes symbol rename impact
-func (ct *ChangeTracker) analyzeRename(change *Change, impact *ChangeImpact, result *ChangeImpactResult) {
+func (ct *ChangeTracker) analyzeRename(change *model.Change, impact *model.ChangeImpact, result *model.ChangeImpact) {
 	// TODO: Implement after DB methods are available
 }
 
 // analyzeModify analyzes symbol modification impact
-func (ct *ChangeTracker) analyzeModify(change *Change, impact *ChangeImpact, result *ChangeImpactResult) {
+func (ct *ChangeTracker) analyzeModify(change *model.Change, impact *model.ChangeImpact, result *model.ChangeImpact) {
 	// Check if signature changed
 	if change.OldSymbol != nil && change.Symbol.Signature != change.OldSymbol.Signature {
 		ct.analyzeSignatureChange(change, result)
@@ -97,23 +97,23 @@ func (ct *ChangeTracker) analyzeModify(change *Change, impact *ChangeImpact, res
 }
 
 // analyzeSignatureChange analyzes signature changes
-func (ct *ChangeTracker) analyzeSignatureChange(change *Change, result *ChangeImpactResult) {
+func (ct *ChangeTracker) analyzeSignatureChange(change *model.Change, result *model.ChangeImpact) {
 	// TODO: Implement after DB methods are available
 }
 
 // analyzeVisibilityChange analyzes visibility changes
-func (ct *ChangeTracker) analyzeVisibilityChange(change *Change, result *ChangeImpactResult) {
+func (ct *ChangeTracker) analyzeVisibilityChange(change *model.Change, result *model.ChangeImpact) {
 	// TODO: Implement after DB methods are available
 }
 
 // analyzeExportChange analyzes export status changes
-func (ct *ChangeTracker) analyzeExportChange(change *Change, result *ChangeImpactResult) {
+func (ct *ChangeTracker) analyzeExportChange(change *model.Change, result *model.ChangeImpact) {
 	isExportedOld := change.OldSymbol != nil && strings.ToUpper(change.OldSymbol.Name[0:1]) == change.OldSymbol.Name[0:1]
 	isExportedNew := strings.ToUpper(change.Symbol.Name[0:1]) == change.Symbol.Name[0:1]
 
 	if isExportedOld && !isExportedNew {
 		// Making unexported - breaking change for external users
-		valError := &ValidationError{
+		valError := &model.ValidationError{
 			Type:     "semantic",
 			File:     change.File,
 			Line:     change.LineStart,
@@ -125,7 +125,7 @@ func (ct *ChangeTracker) analyzeExportChange(change *Change, result *ChangeImpac
 }
 
 // canAutoFix determines if changes can be automatically fixed
-func (ct *ChangeTracker) canAutoFix(result *ChangeImpactResult) bool {
+func (ct *ChangeTracker) canAutoFix(result *model.ChangeImpact) bool {
 	// Can auto-fix only if:
 	// 1. There are auto-fix suggestions
 	// 2. No validation errors (only warnings are OK)
@@ -151,14 +151,14 @@ func (ct *ChangeTracker) canAutoFix(result *ChangeImpactResult) bool {
 }
 
 // ValidateChanges validates a set of changes
-func (ct *ChangeTracker) ValidateChanges(changes []*Change) (*ValidationResult, error) {
-	result := &ValidationResult{
-		ChangeSet: &ChangeSet{
+func (ct *ChangeTracker) ValidateChanges(changes []*model.Change) (*model.ValidationResult, error) {
+	result := &model.ValidationResult{
+		ChangeSet: &model.ChangeSet{
 			Changes:   changes,
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
-		Errors:          []*ValidationError{},
-		Warnings:        []*ValidationError{},
+		Errors:          []*model.ValidationError{},
+		Warnings:        []*model.ValidationError{},
 		Recommendations: []string{},
 	}
 
@@ -207,7 +207,7 @@ func (ct *ChangeTracker) ValidateChanges(changes []*Change) (*ValidationResult, 
 }
 
 // GenerateAutoFixes generates automatic fixes for a change
-func (ct *ChangeTracker) GenerateAutoFixes(change *Change) ([]*AutoFixSuggestion, error) {
+func (ct *ChangeTracker) GenerateAutoFixes(change *model.Change) ([]*model.AutoFixSuggestion, error) {
 	// TODO: Implement after DB methods are available
 	// impactResult, err := ct.AnalyzeSymbolChange(change)
 	// if err != nil {
@@ -219,7 +219,7 @@ func (ct *ChangeTracker) GenerateAutoFixes(change *Change) ([]*AutoFixSuggestion
 }
 
 // SimulateChange simulates a change without applying it
-func (ct *ChangeTracker) SimulateChange(symbolName string, changeType ChangeType, newValue string) (*ChangeImpactResult, error) {
+func (ct *ChangeTracker) SimulateChange(symbolName string, changeType model.ChangeType, newValue string) (*model.ChangeImpact, error) {
 	// TODO: Implement after DB methods are available
 	return nil, nil
 }

@@ -19,7 +19,7 @@ func NewImpactAnalyzer(db *database.Manager) *ImpactAnalyzer {
 }
 
 // AnalyzeChangeImpact analyzes the impact of changing a symbol
-func (ia *ImpactAnalyzer) AnalyzeChangeImpact(symbolName string) (*ChangeImpact, error) {
+func (ia *ImpactAnalyzer) AnalyzeChangeImpact(symbolName string) (*model.ChangeImpact, error) {
 	// TODO: Implement after DB methods are available
 	// // Get the symbol
 	// symbol, err := ia.db.GetSymbolByName(symbolName)
@@ -208,18 +208,18 @@ func (ia *ImpactAnalyzer) AnalyzeBulkImpact(symbolNames []string) (map[string]*C
 }
 
 // SuggestRefactorings suggests refactoring opportunities based on impact analysis
-func (ia *ImpactAnalyzer) SuggestRefactorings(symbolName string) ([]*RefactoringOpportunity, error) {
+func (ia *ImpactAnalyzer) SuggestRefactorings(symbolName string) ([]*model.RefactoringOpportunity, error) {
 	// TODO: Implement after DB methods are available
 	// impact, err := ia.AnalyzeChangeImpact(symbolName)
 	// if err != nil {
 	// 	return nil, err
 	// }
 
-	// opportunities := []*RefactoringOpportunity{}
+	// opportunities := []*model.RefactoringOpportunity{}
 
 	// // High usage but low visibility - should be more visible
 	// if impact.DirectReferences > 20 && impact.Symbol.Visibility == types.VisibilityPrivate {
-	// 	opportunities = append(opportunities, &RefactoringOpportunity{
+	// 	opportunities = append(opportunities, &model.RefactoringOpportunity{
 	// 		Type:        "increase_visibility",
 	// 		Symbol:      impact.Symbol,
 	// 		Description: "Consider making this symbol public - it's heavily used",
@@ -233,7 +233,7 @@ func (ia *ImpactAnalyzer) SuggestRefactorings(symbolName string) ([]*Refactoring
 
 	// // Very high usage - consider splitting
 	// if impact.DirectReferences > 100 {
-	// 	opportunities = append(opportunities, &RefactoringOpportunity{
+	// 	opportunities = append(opportunities, &model.RefactoringOpportunity{
 	// 		Type:        "extract_interface",
 	// 		Symbol:      impact.Symbol,
 	// 		Description: "Consider extracting interface - very high usage",
@@ -247,7 +247,7 @@ func (ia *ImpactAnalyzer) SuggestRefactorings(symbolName string) ([]*Refactoring
 
 	// // Spread across many files - might need better organization
 	// if len(impact.AffectedFiles) > 30 {
-	// 	opportunities = append(opportunities, &RefactoringOpportunity{
+	// 	opportunities = append(opportunities, &model.RefactoringOpportunity{
 	// 		Type:        "consolidate_usage",
 	// 		Symbol:      impact.Symbol,
 	// 		Description: "Usage spread across too many files",

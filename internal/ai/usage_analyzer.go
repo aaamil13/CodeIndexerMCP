@@ -19,7 +19,7 @@ func NewUsageAnalyzer(db *database.Manager) *UsageAnalyzer {
 }
 
 // AnalyzeUsage analyzes usage statistics for a symbol
-func (ua *UsageAnalyzer) AnalyzeUsage(symbol *model.Symbol) (*SymbolUsageStats, error) {
+func (ua *UsageAnalyzer) AnalyzeUsage(symbol *model.Symbol) (*model.SymbolUsageStats, error) {
 	// TODO: Implement after DB methods are available
 	// // Get the symbol
 	// if symbol == nil {
@@ -54,7 +54,7 @@ func (ua *UsageAnalyzer) AnalyzeUsage(symbol *model.Symbol) (*SymbolUsageStats, 
 	// // Find alternatives
 	// alternatives := ua.findAlternatives(symbol)
 
-	// return &SymbolUsageStats{
+	// return &model.SymbolUsageStats{
 	// 	Symbol:         symbol,
 	// 	UsageCount:     usageCount,
 	// 	FileCount:      fileCount,
@@ -200,7 +200,7 @@ func (ua *UsageAnalyzer) FindUnusedSymbols(projectID string) ([]*model.Symbol, e
 }
 
 // FindMostUsedSymbols finds the most frequently used symbols
-func (ua *UsageAnalyzer) FindMostUsedSymbols(projectID string, limit int) ([]*SymbolUsageStats, error) {
+func (ua *UsageAnalyzer) FindMostUsedSymbols(projectID string, limit int) ([]*model.SymbolUsageStats, error) {
 	// TODO: Implement after DB methods are available
 	// // Get all files for project
 	// files, err := ua.db.GetAllFilesForProject(projectID)
@@ -208,7 +208,7 @@ func (ua *UsageAnalyzer) FindMostUsedSymbols(projectID string, limit int) ([]*Sy
 	// 	return nil, err
 	// }
 
-	// usageStats := []*SymbolUsageStats{}
+	// usageStats := []*model.SymbolUsageStats{}
 
 	// for _, file := range files {
 	// 	symbols, err := ua.db.GetSymbolsByFile(file)
@@ -244,14 +244,14 @@ func (ua *UsageAnalyzer) FindMostUsedSymbols(projectID string, limit int) ([]*Sy
 }
 
 // AnalyzeAPIUsage analyzes usage of public API
-func (ua *UsageAnalyzer) AnalyzeAPIUsage(projectID string) (map[string]*SymbolUsageStats, error) {
+func (ua *UsageAnalyzer) AnalyzeAPIUsage(projectID string) (map[string]*model.SymbolUsageStats, error) {
 	// TODO: Implement after DB methods are available
 	// files, err := ua.db.GetAllFilesForProject(projectID)
 	// if err != nil {
 	// 	return nil, err
 	// }
 
-	// apiUsage := make(map[string]*SymbolUsageStats)
+	// apiUsage := make(map[string]*model.SymbolUsageStats)
 
 	// for _, file := range files {
 	// 	symbols, err := ua.db.GetSymbolsByFile(file)

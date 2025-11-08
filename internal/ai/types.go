@@ -12,27 +12,6 @@ const (
 	ChangeTypeDelete ChangeType = "delete"
 )
 
-type Visibility string
-
-const (
-	VisibilityPublic    Visibility = "public"
-	VisibilityPrivate   Visibility = "private"
-	VisibilityProtected Visibility = "protected"
-	VisibilityInternal  Visibility = "internal"
-	VisibilityPackage   Visibility = "package" // For Java package-private
-)
-
-type Change struct {
-	Type        ChangeType
-	Symbol      *model.Symbol
-	OldSymbol   *model.Symbol
-	File        string
-	LineStart   int
-	LineEnd     int
-	Timestamp   string
-	Description string
-}
-
 type BrokenReference struct {
 	Reference     *model.Reference
 	File          string
@@ -78,7 +57,7 @@ type ChangeImpact struct {
 }
 
 type ChangeImpactResult struct {
-	Changes            []*Change
+	Changes            []*model.Change
 	AffectedSymbols    []*model.Symbol
 	AffectedFiles      []string
 	BrokenReferences   []*BrokenReference
@@ -100,7 +79,7 @@ type ValidationResult struct {
 }
 
 type ChangeSet struct {
-	Changes   []*Change
+	Changes   []*model.Change
 	Timestamp string
 }
 

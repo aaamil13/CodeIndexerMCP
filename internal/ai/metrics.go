@@ -22,7 +22,7 @@ func NewMetricsCalculator(db *database.Manager) *MetricsCalculator {
 }
 
 // CalculateMetrics calculates metrics for a symbol
-func (mc *MetricsCalculator) CalculateMetrics(symbol *model.Symbol) (*CodeMetrics, error) {
+func (mc *MetricsCalculator) CalculateMetrics(symbol *model.Symbol) (*model.CodeMetrics, error) {
 	// TODO: Implement after DB methods are available
 	// // Get the symbol
 	// if symbol == nil {
@@ -65,7 +65,7 @@ func (mc *MetricsCalculator) CalculateMetrics(symbol *model.Symbol) (*CodeMetric
 	// // Determine quality
 	// quality := mc.determineQuality(cyclomaticComplexity, cognitiveComplexity, maintainability, hasDocumentation)
 
-	// return &CodeMetrics{
+	// return &model.CodeMetrics{
 	// 	FilePath:             file,
 	// 	FunctionName:         symbol.Name,
 	// 	LinesOfCode:          loc,
@@ -305,7 +305,7 @@ func (mc *MetricsCalculator) extractCode(filePath string, startLine, endLine int
 }
 
 // CalculateFileMetrics calculates metrics for an entire file
-func (mc *MetricsCalculator) CalculateFileMetrics(filePath string) ([]*CodeMetrics, error) {
+func (mc *MetricsCalculator) CalculateFileMetrics(filePath string) ([]*model.CodeMetrics, error) {
 	// TODO: Implement after DB methods are available
 	// // Get file
 	// file := filePath
@@ -316,7 +316,7 @@ func (mc *MetricsCalculator) CalculateFileMetrics(filePath string) ([]*CodeMetri
 	// 	return nil, err
 	// }
 
-	// metrics := []*CodeMetrics{}
+	// metrics := []*model.CodeMetrics{}
 	// for _, symbol := range symbols {
 	// 	// TODO: Check symbol kind for function/method
 	// 	// if symbol.Type == types.SymbolTypeFunction || symbol.Type == types.SymbolTypeMethod {

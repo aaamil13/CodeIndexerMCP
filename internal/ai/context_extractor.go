@@ -21,7 +21,7 @@ func NewContextExtractor(db *database.Manager) *ContextExtractor {
 }
 
 // ExtractContext extracts comprehensive context for a symbol
-func (ce *ContextExtractor) ExtractContext(symbolName string, depth int) (*CodeContext, error) {
+func (ce *ContextExtractor) ExtractContext(symbolName string, depth int) (*model.CodeContext, error) {
 	// TODO: Implement after DB methods are available
 	// // Get the symbol
 	// symbol, err := ce.db.GetSymbolByName(symbolName)
@@ -172,7 +172,7 @@ func (ce *ContextExtractor) extractContext(filePath string, startLine, endLine, 
 }
 
 // extractUsageExamples extracts usage examples for a symbol
-func (ce *ContextExtractor) extractUsageExamples(symbol *model.Symbol, maxExamples int) ([]*UsageExample, error) {
+func (ce *ContextExtractor) extractUsageExamples(symbol *model.Symbol, maxExamples int) ([]*model.UsageExample, error) {
 	// TODO: Implement after DB methods are available
 	// // Get references to this symbol
 	// references, err := ce.db.GetReferencesBySymbol(symbol.ID)
@@ -181,7 +181,7 @@ func (ce *ContextExtractor) extractUsageExamples(symbol *model.Symbol, maxExampl
 	// }
 
 	// if len(references) == 0 {
-	// 	return []*UsageExample{}, nil
+	// 	return []*model.UsageExample{}, nil
 	// }
 
 	// // Limit examples
@@ -189,7 +189,7 @@ func (ce *ContextExtractor) extractUsageExamples(symbol *model.Symbol, maxExampl
 	// 	references = references[:maxExamples]
 	// }
 
-	// examples := []*UsageExample{}
+	// examples := []*model.UsageExample{}
 
 	// for _, ref := range references {
 	// 	file := ref.FilePath
@@ -203,7 +203,7 @@ func (ce *ContextExtractor) extractUsageExamples(symbol *model.Symbol, maxExampl
 	// 	// Get more context
 	// 	context, _ := ce.extractContext(file, ref.Line, ref.Line, 3)
 
-	// 	examples = append(examples, &UsageExample{
+	// 	examples = append(examples, &model.UsageExample{
 	// 		FilePath:    file,
 	// 		LineNumber:  ref.Line,
 	// 		Code:        code,
