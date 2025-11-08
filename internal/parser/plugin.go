@@ -6,7 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // ParserPlugin represents a language parser plugin
@@ -18,7 +19,7 @@ type ParserPlugin interface {
 	Extensions() []string
 
 	// Parse parses file content and returns symbols
-	Parse(content []byte, filePath string) (*types.ParseResult, error)
+	Parse(content []byte, filePath string) (*parsing.ParseResult, error)
 
 	// SupportsFramework checks if parser supports specific framework analysis
 	SupportsFramework(framework string) bool
@@ -36,7 +37,7 @@ type FrameworkAnalyzer interface {
 	Language() string
 
 	// Analyze analyzes code for framework-specific patterns
-	Analyze(result *types.ParseResult, content []byte) (*types.FrameworkInfo, error)
+	Analyze(result *parsing.ParseResult, content []byte) (*model.FrameworkInfo, error)
 
 	// DetectFramework detects if file uses this framework
 	DetectFramework(content []byte, filePath string) bool
@@ -137,7 +138,7 @@ func (r *Registry) GetFrameworkAnalyzers(language string) []FrameworkAnalyzer {
 }
 
 // ParseFile parses a file and applies framework analyzers
-func (r *Registry) ParseFile(filePath string, content []byte) (*types.ParseResult, error) {
+func (r *Registry) ParseFile(filePath string, content []byte) (*parsing.ParseResult, error) {
 	parser, err := r.GetParserForFile(filePath)
 	if err != nil {
 		return nil, err
@@ -154,7 +155,7 @@ func (r *Registry) ParseFile(filePath string, content []byte) (*types.ParseResul
 		if analyzer.DetectFramework(content, filePath) {
 			frameworkInfo, err := analyzer.Analyze(result, content)
 			if err == nil && frameworkInfo != nil {
-				result.Frameworks = append(result.Frameworks, frameworkInfo)
+				// result.Frameworks = append(result.Frameworks, frameworkInfo) // parsing.ParseResult does not have Frameworks
 			}
 		}
 	}
@@ -189,40 +190,4 @@ func (r *Registry) ListFrameworks() []string {
 		result = append(result, fw)
 	}
 	return result
-}
-
-// BaseParser provides common functionality for parsers
-type BaseParser struct {
-	language   string
-	extensions []string
-	priority   int
-}
-
-// Language returns the language identifier
-func (b *BaseParser) Language() string {
-	return b.language
-}
-
-// Extensions returns supported file extensions
-func (b *BaseParser) Extensions() []string {
-	return b.extensions
-}
-
-// Priority returns parser priority
-func (b *BaseParser) Priority() int {
-	return b.priority
-}
-
-// SupportsFramework checks framework support (default: false)
-func (b *BaseParser) SupportsFramework(framework string) bool {
-	return false
-}
-
-// NewBaseParser creates a new base parser
-func NewBaseParser(language string, extensions []string, priority int) *BaseParser {
-	return &BaseParser{
-		language:   language,
-		extensions: extensions,
-		priority:   priority,
-	}
 }

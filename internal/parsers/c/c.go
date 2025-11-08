@@ -4,29 +4,46 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // CParser parses C source code
 type CParser struct {
-	*parser.BaseParser
 }
 
 // NewParser creates a new C parser
 func NewParser() *CParser {
-	return &CParser{
-		BaseParser: parser.NewBaseParser("c", []string{".c", ".h"}, 100),
-	}
+	return &CParser{}
+}
+
+// Language returns the language identifier (e.g., "go", "python", "typescript")
+func (p *CParser) Language() string {
+	return "c"
+}
+
+// Extensions returns file extensions this parser handles (e.g., [".c", ".h"])
+func (p *CParser) Extensions() []string {
+	return []string{'.c', '.h'}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *CParser) Priority() int {
+	return 100
+}
+
+// SupportsFramework checks if parser supports specific framework analysis
+func (p *CParser) SupportsFramework(framework string) bool {
+	return false
 }
 
 // Parse parses C source code
-func (p *CParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       make([]*types.Symbol, 0),
-		Imports:       make([]*types.Import, 0),
-		Relationships: make([]*types.Relationship, 0),
-		Metadata:      make(map[string]interface{}),
+func (p *CParser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols:  make([]*model.Symbol, 0),
+		Imports:  make([]*model.Import, 0),
+		Metadata: make(map[string]interface{}),
 	}
 
 	contentStr := string(content)
@@ -59,21 +76,24 @@ func (p *CParser) Parse(content []byte, filePath string) (*types.ParseResult, er
 	return result, nil
 }
 
-func (p *CParser) extractIncludes(lines []string, result *types.ParseResult) {
-	includeRe := regexp.MustCompile(`^\s*#\s*include\s+[<"]([^>"]+)[>"]`)
+func (p *CParser) extractIncludes(lines []string, result *parsing.ParseResult) {
+	includeRe := regexp.MustCompile(`^\s*#\s*include\s+[<\"]([^>\"]+)[>\"]`)
 
 	for i, line := range lines {
 		if matches := includeRe.FindStringSubmatch(line); matches != nil {
-			imp := &types.Import{
-				Source:     matches[1],
-				LineNumber: i + 1,
+			imp := &model.Import{
+				Path: matches[1],
+				Range: model.Range{
+					Start: model.Position{Line: i + 1},
+					End:   model.Position{Line: i + 1},
+				},
 			}
 			result.Imports = append(result.Imports, imp)
 		}
 	}
 }
 
-func (p *CParser) extractFunctions(content string, result *types.ParseResult) {
+func (p *CParser) extractFunctions(content string, result *parsing.ParseResult) {
 	// Function definition/declaration
 	// Matches: returnType functionName(params)
 	funcRe := regexp.MustCompile(`(?m)^\s*(static|extern|inline)?\s*([\w\s\*]+?)\s+(\w+)\s*\(([^)]*)\)\s*(?:{|;)`)
@@ -106,22 +126,22 @@ func (p *CParser) extractFunctions(content string, result *types.ParseResult) {
 
 		sig := returnType + " " + name + "(" + params + ")"
 
-		visibility := types.VisibilityPublic
+		visibility := model.VisibilityPublic
 		if modifier == "static" {
-			visibility = types.VisibilityPrivate // static in C means file-local
+			visibility = model.VisibilityPrivate // static in C means file-local
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeFunction,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindFunction,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: visibility,
 			Signature:  sig,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -130,7 +150,7 @@ func (p *CParser) extractFunctions(content string, result *types.ParseResult) {
 	}
 }
 
-func (p *CParser) extractTypes(content string, result *types.ParseResult) {
+func (p *CParser) extractTypes(content string, result *parsing.ParseResult) {
 	// Struct declaration
 	structRe := regexp.MustCompile(`(?m)^\s*(typedef\s+)?struct\s+(\w+)?\s*{`)
 
@@ -146,12 +166,12 @@ func (p *CParser) extractTypes(content string, result *types.ParseResult) {
 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeStruct,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindStruct,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "struct " + name,
 		}
 
@@ -172,12 +192,12 @@ func (p *CParser) extractTypes(content string, result *types.ParseResult) {
 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeStruct, // Use struct type for unions too
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindStruct, // Use struct type for unions too
+			File:       "",                     // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "union " + name,
 		}
 
@@ -198,12 +218,12 @@ func (p *CParser) extractTypes(content string, result *types.ParseResult) {
 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeEnum,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindEnum,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "enum " + name,
 		}
 
@@ -211,7 +231,7 @@ func (p *CParser) extractTypes(content string, result *types.ParseResult) {
 	}
 }
 
-func (p *CParser) extractTypedefs(content string, result *types.ParseResult) {
+func (p *CParser) extractTypedefs(content string, result *parsing.ParseResult) {
 	// typedef typename newname;
 	typedefRe := regexp.MustCompile(`(?m)^\s*typedef\s+([^;{]+?)\s+(\w+)\s*;`)
 
@@ -222,15 +242,15 @@ func (p *CParser) extractTypedefs(content string, result *types.ParseResult) {
 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeVariable, // Use variable for typedef
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindVariable, // Use variable for typedef
+			File:       "",                       // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "typedef " + baseType + " " + name,
-			Metadata: map[string]interface{}{
-				"typedef": true,
+			Metadata: map[string]string{
+				"typedef": "true",
 			},
 		}
 
@@ -238,7 +258,7 @@ func (p *CParser) extractTypedefs(content string, result *types.ParseResult) {
 	}
 }
 
-func (p *CParser) extractGlobals(content string, result *types.ParseResult) {
+func (p *CParser) extractGlobals(content string, result *parsing.ParseResult) {
 	// Global variable declaration
 	// This is tricky because it can look like a function
 	globalRe := regexp.MustCompile(`(?m)^\s*(static|extern|const|volatile)?\s*([\w\s\*]+?)\s+(\w+)\s*(?:=|;)`)
@@ -265,22 +285,22 @@ func (p *CParser) extractGlobals(content string, result *types.ParseResult) {
 			continue
 		}
 
-		visibility := types.VisibilityPublic
+		visibility := model.VisibilityPublic
 		if modifier == "static" {
-			visibility = types.VisibilityPrivate
+			visibility = model.VisibilityPrivate
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeVariable,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindVariable,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: visibility,
 			Signature:  varType + " " + name,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -289,8 +309,8 @@ func (p *CParser) extractGlobals(content string, result *types.ParseResult) {
 	}
 }
 
-func (p *CParser) extractDefines(lines []string, result *types.ParseResult) {
-	defineRe := regexp.MustCompile(`^\s*#\s*define\s+(\w+)(?:\([^)]*\))?\s*(.*)`)
+func (p *CParser) extractDefines(lines []string, result *parsing.ParseResult) {
+	defineRe := regexp.MustCompile(`^\s*#\s*define\s+(\w+)(?:[^)]*)?\s*(.*)`)
 
 	for i, line := range lines {
 		if matches := defineRe.FindStringSubmatch(line); matches != nil {
@@ -307,15 +327,15 @@ func (p *CParser) extractDefines(lines []string, result *types.ParseResult) {
 				sig += " " + value
 			}
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:       name,
-				Type:       types.SymbolTypeConstant,
-				StartLine:  i + 1,
-				EndLine:    i + 1,
-				Visibility: types.VisibilityPublic,
+				Kind:       model.SymbolKindConstant,
+				File:       "", // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: i + 1}, End: model.Position{Line: i + 1}},
+				Visibility: model.VisibilityPublic,
 				Signature:  sig,
-				Metadata: map[string]interface{}{
-					"define": true,
+				Metadata: map[string]string{
+					"define": "true",
 				},
 			}
 

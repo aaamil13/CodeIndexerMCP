@@ -4,29 +4,46 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // HTMLParser parses HTML source code
 type HTMLParser struct {
-	*parser.BaseParser
 }
 
 // NewParser creates a new HTML parser
 func NewParser() *HTMLParser {
-	return &HTMLParser{
-		BaseParser: parser.NewBaseParser("html", []string{".html", ".htm"}, 50),
-	}
+	return &HTMLParser{}
+}
+
+// Language returns the language identifier (e.g., "html")
+func (p *HTMLParser) Language() string {
+	return "html"
+}
+
+// Extensions returns file extensions this parser handles (e.g., [".html", ".htm"])
+func (p *HTMLParser) Extensions() []string {
+	return []string{”.html", ".htm"}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *HTMLParser) Priority() int {
+	return 50
+}
+
+// SupportsFramework checks if parser supports specific framework analysis
+func (p *HTMLParser) SupportsFramework(framework string) bool {
+	return false
 }
 
 // Parse parses HTML content
-func (p *HTMLParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       make([]*types.Symbol, 0),
-		Imports:       make([]*types.Import, 0),
-		Relationships: make([]*types.Relationship, 0),
-		Metadata:      make(map[string]interface{}),
+func (p *HTMLParser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols:  make([]*model.Symbol, 0),
+		Imports:  make([]*model.Import, 0),
+		Metadata: make(map[string]interface{}),
 	}
 
 	contentStr := string(content)
@@ -45,9 +62,9 @@ func (p *HTMLParser) Parse(content []byte, filePath string) (*types.ParseResult,
 	return result, nil
 }
 
-func (p *HTMLParser) extractIDs(content string, result *types.ParseResult) {
+func (p *HTMLParser) extractIDs(content string, result *parsing.ParseResult) {
 	// Match id="..." or id='...'
-	idRe := regexp.MustCompile(`<(\w+)[^>]*\sid=["']([^"']+)["']`)
+	idRe := regexp.MustCompile(`<(\\w+)[^>]*\sid=["']([^"']+)["']`)
 
 	matches := idRe.FindAllStringSubmatchIndex(content, -1)
 	for _, match := range matches {
@@ -56,14 +73,14 @@ func (p *HTMLParser) extractIDs(content string, result *types.ParseResult) {
 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       "#" + id,
-			Type:       types.SymbolTypeVariable,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
-			Signature:  "<" + tag + " id=\"" + id + "\">",
-			Metadata: map[string]interface{}{
+			Kind:       model.SymbolKindVariable,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
+			Signature:  "<" + tag + " id=\"" + id + "\">";
+			Metadata: map[string]string{
 				"tag": tag,
 				"id":  id,
 			},
@@ -73,9 +90,9 @@ func (p *HTMLParser) extractIDs(content string, result *types.ParseResult) {
 	}
 }
 
-func (p *HTMLParser) extractClasses(content string, result *types.ParseResult) {
+func (p *HTMLParser) extractClasses(content string, result *parsing.ParseResult) {
 	// Match class="..." or class='...'
-	classRe := regexp.MustCompile(`<(\w+)[^>]*\sclass=["']([^"']+)["']`)
+	classRe := regexp.MustCompile(`<(\\w+)[^>]*\sclass=["']([^"']+)["']`)
 
 	seen := make(map[string]bool)
 
@@ -99,14 +116,14 @@ func (p *HTMLParser) extractClasses(content string, result *types.ParseResult) {
 			}
 			seen[key] = true
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:       "." + className,
-				Type:       types.SymbolTypeVariable,
-				StartLine:  lineNum,
-				EndLine:    lineNum,
-				Visibility: types.VisibilityPublic,
-				Signature:  "<" + tag + " class=\"" + className + "\">",
-				Metadata: map[string]interface{}{
+				Kind:       model.SymbolKindVariable,
+				File:       "", // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+				Visibility: model.VisibilityPublic,
+				Signature:  "<" + tag + " class=\"" + className + "\">";
+				Metadata: map[string]string{
 					"tag":   tag,
 					"class": className,
 				},
@@ -117,7 +134,7 @@ func (p *HTMLParser) extractClasses(content string, result *types.ParseResult) {
 	}
 }
 
-func (p *HTMLParser) extractImports(content string, result *types.ParseResult) {
+func (p *HTMLParser) extractImports(content string, result *parsing.ParseResult) {
 	// Script tags
 	scriptRe := regexp.MustCompile(`<script[^>]*\ssrc=["']([^"']+)["']`)
 
@@ -126,10 +143,12 @@ func (p *HTMLParser) extractImports(content string, result *types.ParseResult) {
 		src := content[match[2]:match[3]]
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		imp := &types.Import{
-			Source:     src,
-			LineNumber: lineNum,
-			// Alias field removed
+		imp := &model.Import{
+			Path: src,
+			Range: model.Range{
+				Start: model.Position{Line: lineNum},
+				End:   model.Position{Line: lineNum},
+			},
 		}
 
 		result.Imports = append(result.Imports, imp)
@@ -145,10 +164,12 @@ func (p *HTMLParser) extractImports(content string, result *types.ParseResult) {
 
 		// Only add if it's a stylesheet
 		if strings.Contains(content[match[0]:match[1]], "stylesheet") {
-			imp := &types.Import{
-				Source:     href,
-				LineNumber: lineNum,
-				// Alias field removed
+			imp := &model.Import{
+				Path: href,
+				Range: model.Range{
+					Start: model.Position{Line: lineNum},
+					End:   model.Position{Line: lineNum},
+				},
 			}
 
 			result.Imports = append(result.Imports, imp)

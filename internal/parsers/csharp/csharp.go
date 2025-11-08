@@ -4,28 +4,46 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // CSharpParser parses C# source code
 type CSharpParser struct {
-	*parser.BaseParser
 }
 
 // NewParser creates a new C# parser
 func NewParser() *CSharpParser {
-	return &CSharpParser{
-		BaseParser: parser.NewBaseParser("csharp", []string{".cs"}, 100),
-	}
+	return &CSharpParser{}
+}
+
+// Language returns the language identifier (e.g., "go", "python", "typescript")
+func (p *CSharpParser) Language() string {
+	return "csharp"
+}
+
+// Extensions returns file extensions this parser handles (e.g., [".cs"])
+func (p *CSharpParser) Extensions() []string {
+	return []string{'.cs'}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *CSharpParser) Priority() int {
+	return 100
+}
+
+// SupportsFramework checks if parser supports specific framework analysis
+func (p *CSharpParser) SupportsFramework(framework string) bool {
+	return false
 }
 
 // Parse parses C# source code
-func (p *CSharpParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       make([]*types.Symbol, 0),
-		Imports:       make([]*types.Import, 0),
-		Relationships: make([]*types.Relationship, 0),
+func (p *CSharpParser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols:       make([]*model.Symbol, 0),
+		Imports:       make([]*model.Import, 0),
+		Relationships: make([]*model.Relationship, 0),
 		Metadata:      make(map[string]interface{}),
 	}
 
@@ -49,7 +67,7 @@ func (p *CSharpParser) Parse(content []byte, filePath string) (*types.ParseResul
 	return result, nil
 }
 
-func (p *CSharpParser) extractNamespaces(lines []string, content string, result *types.ParseResult) {
+func (p *CSharpParser) extractNamespaces(lines []string, content string, result *parsing.ParseResult) {
 	// File-scoped namespace (C# 10+)
 	fileScopedNsRe := regexp.MustCompile(`(?m)^\s*namespace\s+([\w.]+)\s*;`)
 
@@ -61,12 +79,12 @@ func (p *CSharpParser) extractNamespaces(lines []string, content string, result 
 		result.Metadata["namespace"] = matches[1]
 		lineNum := strings.Count(content[:strings.Index(content, matches[0])], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       matches[1],
-			Type:       types.SymbolTypeNamespace,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindNamespace,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "namespace " + matches[1],
 		}
 		result.Symbols = append(result.Symbols, symbol)
@@ -79,12 +97,12 @@ func (p *CSharpParser) extractNamespaces(lines []string, content string, result 
 		name := content[match[2]:match[3]]
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeNamespace,
-			StartLine:  lineNum,
-			EndLine:    p.findClosingBrace(lines, lineNum-1),
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindNamespace,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: p.findClosingBrace(lines, lineNum-1)},
+			Visibility: model.VisibilityPublic,
 			Signature:  "namespace " + name,
 		}
 		result.Symbols = append(result.Symbols, symbol)
@@ -95,7 +113,7 @@ func (p *CSharpParser) extractNamespaces(lines []string, content string, result 
 	}
 }
 
-func (p *CSharpParser) extractUsings(lines []string, result *types.ParseResult) {
+func (p *CSharpParser) extractUsings(lines []string, result *parsing.ParseResult) {
 	usingRe := regexp.MustCompile(`^\s*using\s+(static\s+)?(?:([\w.]+)\s*=\s*)?([\w.]+)\s*;`)
 
 	for i, line := range lines {
@@ -104,9 +122,12 @@ func (p *CSharpParser) extractUsings(lines []string, result *types.ParseResult) 
 			// alias := matches[2] // Declared and not used
 			namespace := matches[3]
 
-			imp := &types.Import{
-				Source:     namespace,
-				LineNumber: i + 1,
+			imp := &model.Import{
+				Path: namespace,
+				Range: model.Range{
+					Start: model.Position{Line: i + 1},
+					End:   model.Position{Line: i + 1},
+				},
 			}
 
 			// Alias field no longer exists in types.Import
@@ -118,9 +139,9 @@ func (p *CSharpParser) extractUsings(lines []string, result *types.ParseResult) 
 	}
 }
 
-func (p *CSharpParser) extractTypes(lines []string, content string, result *types.ParseResult) {
+func (p *CSharpParser) extractTypes(lines []string, content string, result *parsing.ParseResult) {
 	// Type declaration: class, interface, struct, enum, record
-	typeRe := regexp.MustCompile(`(?m)^\s*(?:\[[\w\s,()=]+\]\s*)*(public|private|protected|internal|protected\s+internal|private\s+protected)?\s*(abstract|sealed|static|partial)?\s*(class|interface|struct|enum|record(?:\s+(?:class|struct))?)\s+(\w+)(?:<[^>]+>)?(?:\s*:\s*([\w<>,\s]+))?`)
+	typeRe := regexp.MustCompile(`(?m)^\s*(?:[\w\s,()=]+\s*)*(public|private|protected|internal|protected\s+internal|private\s+protected)?\s*(abstract|sealed|static|partial)?\s*(class|interface|struct|enum|record(?:\s+(?:class|struct))?)\s+(\w+)(?:<[^>]+>)?(?:\s*:\s*([\w<>,\]+))?`)
 
 	matches := typeRe.FindAllStringSubmatchIndex(content, -1)
 	for _, match := range matches {
@@ -145,20 +166,20 @@ func (p *CSharpParser) extractTypes(lines []string, content string, result *type
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
 		// Determine symbol type
-		var symbolType types.SymbolType
+		var symbolKind model.SymbolKind
 		switch {
 		case strings.HasPrefix(typeKind, "class"):
-			symbolType = types.SymbolTypeClass
+			symbolKind = model.SymbolKindClass
 		case strings.HasPrefix(typeKind, "interface"):
-			symbolType = types.SymbolTypeInterface
+			symbolKind = model.SymbolKindInterface
 		case strings.HasPrefix(typeKind, "struct"):
-			symbolType = types.SymbolTypeStruct
+			symbolKind = model.SymbolKindStruct
 		case typeKind == "enum":
-			symbolType = types.SymbolTypeEnum
+			symbolKind = model.SymbolKindEnum
 		case strings.HasPrefix(typeKind, "record"):
-			symbolType = types.SymbolTypeClass // Record is a special class
+			symbolKind = model.SymbolKindClass // Record is a special class
 		default:
-			symbolType = types.SymbolTypeClass
+			symbolKind = model.SymbolKindClass
 		}
 
 		sig := typeKind + " " + name
@@ -166,17 +187,17 @@ func (p *CSharpParser) extractTypes(lines []string, content string, result *type
 			sig += " : " + inheritance
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       symbolType,
-			StartLine:  lineNum,
-			EndLine:    p.findClosingBrace(lines, lineNum-1),
+			Kind:       symbolKind,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: p.findClosingBrace(lines, lineNum-1)},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -189,25 +210,25 @@ func (p *CSharpParser) extractTypes(lines []string, content string, result *type
 				parent = strings.TrimSpace(parent)
 				// In C#, first is base class, rest are interfaces
 				// We'll just mark all as "extends" for simplicity
-				result.Relationships = append(result.Relationships, &types.Relationship{
-					Type:       types.RelationshipExtends, // Corrected constant name
-					SourceName: name,
-					TargetName: parent,
+				result.Relationships = append(result.Relationships, &model.Relationship{
+					Type:       model.RelationshipKindExtends,
+					SourceSymbol: name,
+					TargetSymbol: parent,
 				})
 			}
 		}
 	}
 }
 
-func (p *CSharpParser) extractMembers(lines []string, content string, result *types.ParseResult) {
+func (p *CSharpParser) extractMembers(lines []string, content string, result *parsing.ParseResult) {
 	// Method declaration
-	methodRe := regexp.MustCompile(`(?m)^\s*(?:\[[\w\s,()=]+\]\s*)*(public|private|protected|internal)?\s*(static|virtual|override|abstract|async|extern)?\s*([\w<>\[\]?]+)\s+(\w+)\s*(?:<[^>]+>)?\s*\(([^)]*)\)`)
+	methodRe := regexp.MustCompile(`(?m)^\s*(?:[\w\s,()=]+\s*)*(public|private|protected|internal)?\s*(static|virtual|override|abstract|async|extern)?\s*([\w<>[\]?]+)\s+(\w+)\s*(?:<[^>]+>)?\s*\(([^)]*)\)`)
 
 	// Property declaration
-	propertyRe := regexp.MustCompile(`(?m)^\s*(public|private|protected|internal)?\s*(static|virtual|override|abstract)?\s*([\w<>\[\]?]+)\s+(\w+)\s*{\s*(?:get|set)`)
+	propertyRe := regexp.MustCompile(`(?m)^\s*(public|private|protected|internal)?\s*(static|virtual|override|abstract)?\s*([\w<>[\]?]+)\s+(\w+)\s*{\s*(?:get|set)`)
 
 	// Field declaration
-	fieldRe := regexp.MustCompile(`(?m)^\s*(public|private|protected|internal)?\s*(static|readonly|const|volatile)?\s*([\w<>\[\]?]+)\s+(\w+)\s*[=;]`)
+	fieldRe := regexp.MustCompile(`(?m)^\s*(public|private|protected|internal)?\s*(static|readonly|const|volatile)?\s*([\w<>[\]?]+)\s+(\w+)\s*[=;]`)
 
 	// Extract methods
 	methodMatches := methodRe.FindAllStringSubmatchIndex(content, -1)
@@ -238,17 +259,17 @@ func (p *CSharpParser) extractMembers(lines []string, content string, result *ty
 
 		sig := returnType + " " + name + "(" + params + ")"
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeMethod,
-			StartLine:  lineNum,
-			EndLine:    p.findClosingBrace(lines, lineNum-1),
+			Kind:       model.SymbolKindMethod,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: p.findClosingBrace(lines, lineNum-1)},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -274,17 +295,17 @@ func (p *CSharpParser) extractMembers(lines []string, content string, result *ty
 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeProperty,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindProperty,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  propType + " " + name + " { get; set; }",
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -315,17 +336,17 @@ func (p *CSharpParser) extractMembers(lines []string, content string, result *ty
 			continue
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeField,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindField,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  fieldType + " " + name,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -334,18 +355,18 @@ func (p *CSharpParser) extractMembers(lines []string, content string, result *ty
 	}
 }
 
-func (p *CSharpParser) parseVisibility(vis string) types.Visibility {
+func (p *CSharpParser) parseVisibility(vis string) model.Visibility {
 	switch strings.ToLower(strings.TrimSpace(vis)) {
 	case "public":
-		return types.VisibilityPublic
+		return model.VisibilityPublic
 	case "private":
-		return types.VisibilityPrivate
+		return model.VisibilityPrivate
 	case "protected":
-		return types.VisibilityProtected
+		return model.VisibilityProtected
 	case "internal", "protected internal", "private protected":
-		return types.VisibilityInternal
+		return model.VisibilityInternal
 	default:
-		return types.VisibilityPrivate // C# default is private
+		return model.VisibilityPrivate // C# default is private
 	}
 }
 

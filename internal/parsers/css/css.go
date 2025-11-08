@@ -4,29 +4,46 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // CSSParser parses CSS/SCSS/SASS source code
 type CSSParser struct {
-	*parser.BaseParser
 }
 
 // NewParser creates a new CSS parser
 func NewParser() *CSSParser {
-	return &CSSParser{
-		BaseParser: parser.NewBaseParser("css", []string{".css", ".scss", ".sass", ".less"}, 50),
-	}
+	return &CSSParser{}
+}
+
+// Language returns the language identifier (e.g., "css")
+func (p *CSSParser) Language() string {
+	return "css"
+}
+
+// Extensions returns file extensions this parser handles (e.g., [".css", ".scss"])
+func (p *CSSParser) Extensions() []string {
+	return []string{'.css', '.scss', '.sass', '.less'}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *CSSParser) Priority() int {
+	return 50
+}
+
+// SupportsFramework checks if parser supports specific framework analysis
+func (p *CSSParser) SupportsFramework(framework string) bool {
+	return false
 }
 
 // Parse parses CSS content
-func (p *CSSParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       make([]*types.Symbol, 0),
-		Imports:       make([]*types.Import, 0),
-		Relationships: make([]*types.Relationship, 0),
-		Metadata:      make(map[string]interface{}),
+func (p *CSSParser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols:  make([]*model.Symbol, 0),
+		Imports:  make([]*model.Import, 0),
+		Metadata: make(map[string]interface{}),
 	}
 
 	contentStr := string(content)
@@ -56,7 +73,7 @@ func (p *CSSParser) Parse(content []byte, filePath string) (*types.ParseResult, 
 	return result, nil
 }
 
-func (p *CSSParser) extractImports(content string, result *types.ParseResult) {
+func (p *CSSParser) extractImports(content string, result *parsing.ParseResult) {
 	// @import "file.css" or @import url("file.css")
 	importRe := regexp.MustCompile(`@import\s+(?:url\()?["']([^"']+)["']\)?`)
 
@@ -65,19 +82,22 @@ func (p *CSSParser) extractImports(content string, result *types.ParseResult) {
 		source := content[match[2]:match[3]]
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		imp := &types.Import{
-			Source: source,
-			Line:   lineNum,
+		imp := &model.Import{
+			Path: source,
+			Range: model.Range{
+				Start: model.Position{Line: lineNum},
+				End:   model.Position{Line: lineNum},
+			},
 		}
 
 		result.Imports = append(result.Imports, imp)
 	}
 }
 
-func (p *CSSParser) extractSelectors(content string, result *types.ParseResult) {
+func (p *CSSParser) extractSelectors(content string, result *parsing.ParseResult) {
 	// CSS rule: selector { properties }
 	// Match class selectors, ID selectors, element selectors
-	selectorRe := regexp.MustCompile(`(?m)^\s*([.#]?[\w-]+(?:[.#:][\w-]+)*(?:\s*[>+~]\s*[\w.-]+)*)\s*{`)
+	selectorRe := regexp.MustCompile(`(?m)^\s*([.#]?["\w-]+\s*(?:[.#:]["\w-]+\s*)*\s*(?:[>+~]\s*["\w.-]+)*)\s*{`)
 
 	seen := make(map[string]bool)
 
@@ -99,24 +119,24 @@ func (p *CSSParser) extractSelectors(content string, result *types.ParseResult) 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
 		// Determine type based on selector
-		var symbolType types.SymbolType
+		var symbolKind model.SymbolKind
 		if strings.HasPrefix(selector, ".") {
-			symbolType = types.SymbolTypeVariable // Class
+			symbolKind = model.SymbolKindVariable // Class
 		} else if strings.HasPrefix(selector, "#") {
-			symbolType = types.SymbolTypeConstant // ID
+			symbolKind = model.SymbolKindConstant // ID
 		} else {
-			symbolType = types.SymbolTypeVariable // Element or complex selector
+			symbolKind = model.SymbolKindVariable // Element or complex selector
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       selector,
-			Type:       symbolType,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       symbolKind,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  selector + " { }",
-			Metadata: map[string]interface{}{
-				"selector": true,
+			Metadata: map[string]string{
+				"selector": "true",
 			},
 		}
 
@@ -124,9 +144,9 @@ func (p *CSSParser) extractSelectors(content string, result *types.ParseResult) 
 	}
 }
 
-func (p *CSSParser) extractVariables(content string, result *types.ParseResult) {
+func (p *CSSParser) extractVariables(content string, result *parsing.ParseResult) {
 	// CSS custom properties: --variable-name
-	varRe := regexp.MustCompile(`(--[\w-]+)\s*:`)
+	varRe := regexp.MustCompile(`(--["\w-]+)\s*:`)
 
 	seen := make(map[string]bool)
 
@@ -141,15 +161,15 @@ func (p *CSSParser) extractVariables(content string, result *types.ParseResult) 
 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeVariable,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindVariable,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  name,
-			Metadata: map[string]interface{}{
-				"css_variable": true,
+			Metadata: map[string]string{
+				"css_variable": "true",
 			},
 		}
 
@@ -157,7 +177,7 @@ func (p *CSSParser) extractVariables(content string, result *types.ParseResult) 
 	}
 
 	// SCSS/LESS variables: $variable-name or @variable-name
-	scssVarRe := regexp.MustCompile(`([$@][\w-]+)\s*:`)
+	scssVarRe := regexp.MustCompile(`([$@]["\w-]+)\s*:`)
 
 	scssMatches := scssVarRe.FindAllStringSubmatchIndex(content, -1)
 	for _, match := range scssMatches {
@@ -170,15 +190,15 @@ func (p *CSSParser) extractVariables(content string, result *types.ParseResult) 
 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeVariable,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindVariable,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  name,
-			Metadata: map[string]interface{}{
-				"preprocessor_variable": true,
+			Metadata: map[string]string{
+				"preprocessor_variable": "true",
 			},
 		}
 
@@ -186,24 +206,24 @@ func (p *CSSParser) extractVariables(content string, result *types.ParseResult) 
 	}
 }
 
-func (p *CSSParser) extractKeyframes(content string, result *types.ParseResult) {
+func (p *CSSParser) extractKeyframes(content string, result *parsing.ParseResult) {
 	// @keyframes animation-name
-	keyframesRe := regexp.MustCompile(`@(?:-webkit-|-moz-|-o-)?keyframes\s+([\w-]+)`)
+	keyframesRe := regexp.MustCompile(`@(?:-webkit-|-moz-|-o-)?keyframes\s+(["\w-]+)`) // Added " to regex
 
 	matches := keyframesRe.FindAllStringSubmatchIndex(content, -1)
 	for _, match := range matches {
 		name := content[match[2]:match[3]]
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeFunction,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindFunction,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "@keyframes " + name,
-			Metadata: map[string]interface{}{
-				"keyframes": true,
+			Metadata: map[string]string{
+				"keyframes": "true",
 			},
 		}
 
@@ -211,7 +231,7 @@ func (p *CSSParser) extractKeyframes(content string, result *types.ParseResult) 
 	}
 }
 
-func (p *CSSParser) extractMediaQueries(content string, result *types.ParseResult) {
+func (p *CSSParser) extractMediaQueries(content string, result *parsing.ParseResult) {
 	// @media query
 	mediaRe := regexp.MustCompile(`@media\s+([^{]+)`)
 
@@ -234,15 +254,15 @@ func (p *CSSParser) extractMediaQueries(content string, result *types.ParseResul
 			name = name[:50] + "..."
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeVariable,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindVariable,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "@media " + query,
-			Metadata: map[string]interface{}{
-				"media_query": true,
+			Metadata: map[string]string{
+				"media_query": "true",
 			},
 		}
 

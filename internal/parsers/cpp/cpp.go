@@ -4,28 +4,46 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // CppParser parses C++ source code
 type CppParser struct {
-	*parser.BaseParser
 }
 
 // NewParser creates a new C++ parser
 func NewParser() *CppParser {
-	return &CppParser{
-		BaseParser: parser.NewBaseParser("cpp", []string{".cpp", ".cc", ".cxx", ".hpp", ".h", ".hxx"}, 100),
-	}
+	return &CppParser{}
+}
+
+// Language returns the language identifier (e.g., "go", "python", "typescript")
+func (p *CppParser) Language() string {
+	return "cpp"
+}
+
+// Extensions returns file extensions this parser handles (e.g., [".cpp", ".h"])
+func (p *CppParser) Extensions() []string {
+	return []string{'.cpp', '.cc', '.cxx', '.hpp', '.h', '.hxx'}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *CppParser) Priority() int {
+	return 100
+}
+
+// SupportsFramework checks if parser supports specific framework analysis
+func (p *CppParser) SupportsFramework(framework string) bool {
+	return false
 }
 
 // Parse parses C++ source code
-func (p *CppParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       make([]*types.Symbol, 0),
-		Imports:       make([]*types.Import, 0),
-		Relationships: make([]*types.Relationship, 0),
+func (p *CppParser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols:       make([]*model.Symbol, 0),
+		Imports:       make([]*model.Import, 0),
+		Relationships: make([]*model.Relationship, 0),
 		Metadata:      make(map[string]interface{}),
 	}
 
@@ -56,21 +74,24 @@ func (p *CppParser) Parse(content []byte, filePath string) (*types.ParseResult, 
 	return result, nil
 }
 
-func (p *CppParser) extractIncludes(lines []string, result *types.ParseResult) {
-	includeRe := regexp.MustCompile(`^\s*#\s*include\s+[<"]([^>"]+)[>"]`)
+func (p *CppParser) extractIncludes(lines []string, result *parsing.ParseResult) {
+	includeRe := regexp.MustCompile(`^\s*#\s*include\s+[<\"]([^>\"]+)[>\"]`)
 
 	for i, line := range lines {
 		if matches := includeRe.FindStringSubmatch(line); matches != nil {
-			imp := &types.Import{
-				Source:     matches[1],
-				LineNumber: i + 1,
+			imp := &model.Import{
+				Path: matches[1],
+				Range: model.Range{
+					Start: model.Position{Line: i + 1},
+					End:   model.Position{Line: i + 1},
+				},
 			}
 			result.Imports = append(result.Imports, imp)
 		}
 	}
 }
 
-func (p *CppParser) extractNamespaces(content string, result *types.ParseResult) {
+func (p *CppParser) extractNamespaces(content string, result *parsing.ParseResult) {
 	nsRe := regexp.MustCompile(`(?m)^\s*namespace\s+(\w+)(?:\s*::\s*\w+)*\s*{`)
 
 	matches := nsRe.FindAllStringSubmatchIndex(content, -1)
@@ -78,12 +99,12 @@ func (p *CppParser) extractNamespaces(content string, result *types.ParseResult)
 		name := content[match[2]:match[3]]
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeNamespace,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindNamespace,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "namespace " + name,
 		}
 
@@ -91,7 +112,7 @@ func (p *CppParser) extractNamespaces(content string, result *types.ParseResult)
 	}
 }
 
-func (p *CppParser) extractClasses(content string, result *types.ParseResult) {
+func (p *CppParser) extractClasses(content string, result *parsing.ParseResult) {
 	// Class/struct declaration
 	classRe := regexp.MustCompile(`(?m)^\s*(?:template\s*<[^>]+>\s*)?(class|struct)\s+(?:__declspec\([^)]+\)\s+)?(\w+)(?:\s*:\s*((?:public|protected|private)\s+[\w:,\s<>]+))?(?:\s*{|;)`)
 
@@ -107,11 +128,11 @@ func (p *CppParser) extractClasses(content string, result *types.ParseResult) {
 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		var symbolType types.SymbolType
+		var symbolKind model.SymbolKind
 		if typeKind == "struct" {
-			symbolType = types.SymbolTypeStruct
+			symbolKind = model.SymbolKindStruct
 		} else {
-			symbolType = types.SymbolTypeClass
+			symbolKind = model.SymbolKindClass
 		}
 
 		sig := typeKind + " " + name
@@ -119,12 +140,12 @@ func (p *CppParser) extractClasses(content string, result *types.ParseResult) {
 			sig += " : " + inheritance
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       symbolType,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       symbolKind,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  sig,
 		}
 
@@ -143,10 +164,10 @@ func (p *CppParser) extractClasses(content string, result *types.ParseResult) {
 				part = strings.TrimSpace(part)
 
 				if part != "" {
-					result.Relationships = append(result.Relationships, &types.Relationship{
-						Type:       types.RelationshipExtends,
-						SourceName: name,
-						TargetName: part,
+					result.Relationships = append(result.Relationships, &model.Relationship{
+						Type:       model.RelationshipKindExtends,
+						SourceSymbol: name,
+						TargetSymbol: part,
 					})
 				}
 			}
@@ -154,10 +175,11 @@ func (p *CppParser) extractClasses(content string, result *types.ParseResult) {
 	}
 }
 
-func (p *CppParser) extractFunctions(content string, result *types.ParseResult) {
+func (p *CppParser) extractFunctions(content string, result *parsing.ParseResult) {
 	// Function declaration/definition
 	// Including member functions and operators
-	funcRe := regexp.MustCompile(`(?m)^\s*(?:virtual|static|inline|explicit|constexpr|friend)?\s*([\w:<>,\s\*&]+?)\s+(\w+|operator\s*[+\-*/=<>!&|]+)\s*\(([^)]*)\)\s*(?:const|override|final|noexcept)?\s*(?:{|;|=)`)
+	funcRe := regexp.MustCompile(`(?m)^\s*(?:virtual|static|inline|explicit|constexpr|friend)?\s*([\w:<>,
+\s\*&]+?)\s+(\w+|operator\s*[+\-*/=<>!&|]+)\s*\(([^)]*)\)\s*(?:const|override|final|noexcept)?\s*(?:{|;|.=)`) // Added '=' to the end of the regex
 
 	matches := funcRe.FindAllStringSubmatchIndex(content, -1)
 	for _, match := range matches {
@@ -188,17 +210,17 @@ func (p *CppParser) extractFunctions(content string, result *types.ParseResult) 
 		sig := returnType + " " + name + "(" + params + ")"
 
 		// Determine if it's a method (has :: in name) or function
-		symbolType := types.SymbolTypeFunction
+		symbolKind := model.SymbolKindFunction
 		if strings.Contains(name, "::") || strings.HasPrefix(name, "operator") {
-			symbolType = types.SymbolTypeMethod
+			symbolKind = model.SymbolKindMethod
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       symbolType,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       symbolKind,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  sig,
 		}
 
@@ -206,8 +228,8 @@ func (p *CppParser) extractFunctions(content string, result *types.ParseResult) 
 	}
 
 	// Constructor/Destructor
-	ctorRe := regexp.MustCompile(`(?m)^\s*(?:explicit\s+)?(\w+)::\1\s*\(([^)]*)\)`)
-	dtorRe := regexp.MustCompile(`(?m)^\s*(?:virtual\s+)?(\w+)::~\1\s*\(\)`)
+	ctorRe := regexp.MustCompile(`(?m)^\s*(?:explicit\s+)?(\w+)::\1\s*\(([^)]*)\)`) // Removed trailing '='
+	dtorRe := regexp.MustCompile(`(?m)^\s*(?:virtual\s+)?(\w+):~\1\s*\(\)`)
 
 	// Constructors
 	ctorMatches := ctorRe.FindAllStringSubmatchIndex(content, -1)
@@ -220,12 +242,12 @@ func (p *CppParser) extractFunctions(content string, result *types.ParseResult) 
 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       className + "::" + className,
-			Type:       types.SymbolTypeConstructor,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindConstructor,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  className + "(" + params + ")",
 		}
 
@@ -238,15 +260,15 @@ func (p *CppParser) extractFunctions(content string, result *types.ParseResult) 
 		className := content[match[2]:match[3]]
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       className + "::~" + className,
-			Type:       types.SymbolTypeMethod,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindMethod, // Destructors are methods
+			File:       "",                     // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "~" + className + "()",
-			Metadata: map[string]interface{}{
-				"destructor": true,
+			Metadata: map[string]string{
+				"destructor": "true",
 			},
 		}
 
@@ -254,7 +276,7 @@ func (p *CppParser) extractFunctions(content string, result *types.ParseResult) 
 	}
 }
 
-func (p *CppParser) extractTemplates(content string, result *types.ParseResult) {
+func (p *CppParser) extractTemplates(content string, result *parsing.ParseResult) {
 	// Template class/function
 	templateRe := regexp.MustCompile(`(?m)^\s*template\s*<([^>]+)>\s*(?:class|struct|typename)\s+(\w+)`)
 
@@ -265,15 +287,15 @@ func (p *CppParser) extractTemplates(content string, result *types.ParseResult) 
 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeClass,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindClass, // Templates are often classes or functions, here we generalize to class
+			File:       "",                    // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "template<" + templateParams + "> class " + name,
-			Metadata: map[string]interface{}{
-				"template": true,
+			Metadata: map[string]string{
+				"template": "true",
 			},
 		}
 

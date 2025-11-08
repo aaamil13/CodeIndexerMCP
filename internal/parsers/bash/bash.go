@@ -4,29 +4,47 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // BashParser parses Bash/Shell script source code
 type BashParser struct {
-	*parser.BaseParser
 }
 
 // NewParser creates a new Bash parser
 func NewParser() *BashParser {
-	return &BashParser{
-		BaseParser: parser.NewBaseParser("bash", []string{".sh", ".bash"}, 100),
-	}
+	return &BashParser{}
+}
+
+// Language returns the language identifier (e.g., "go", "python", "typescript")
+func (p *BashParser) Language() string {
+	return "bash"
+}
+
+// Extensions returns file extensions this parser handles (e.g., [".sh", ".bash"])
+func (p *BashParser) Extensions() []string {
+	return []string{".sh", ".bash"}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *BashParser) Priority() int {
+	return 100
+}
+
+// SupportsFramework checks if parser supports specific framework analysis
+func (p *BashParser) SupportsFramework(framework string) bool {
+	return false
 }
 
 // Parse parses Bash source code
-func (p *BashParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       make([]*types.Symbol, 0),
-		Imports:       make([]*types.Import, 0),
-		Relationships: make([]*types.Relationship, 0),
-		Metadata:      make(map[string]interface{}),
+func (p *BashParser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols: make([]*model.Symbol, 0),
+		Imports: make([]*model.Import, 0),
+		// Relationships: make([]*model.Relationship, 0), // Relationships are not directly extracted by bash parser
+		Metadata: make(map[string]interface{}),
 	}
 
 	contentStr := string(content)
@@ -46,21 +64,24 @@ func (p *BashParser) Parse(content []byte, filePath string) (*types.ParseResult,
 	return result, nil
 }
 
-func (p *BashParser) extractSources(lines []string, result *types.ParseResult) {
+func (p *BashParser) extractSources(lines []string, result *parsing.ParseResult) {
 	sourceRe := regexp.MustCompile(`^\s*(?:source|\.)\s+([^\s#]+)`)
 
 	for i, line := range lines {
 		if matches := sourceRe.FindStringSubmatch(line); matches != nil {
-			imp := &types.Import{
-				Source:     matches[1],
-				LineNumber: i + 1,
+			imp := &model.Import{
+				Path: matches[1],
+				Range: model.Range{
+					Start: model.Position{Line: i + 1},
+					End:   model.Position{Line: i + 1},
+				},
 			}
 			result.Imports = append(result.Imports, imp)
 		}
 	}
 }
 
-func (p *BashParser) extractFunctions(content string, result *types.ParseResult) {
+func (p *BashParser) extractFunctions(content string, result *parsing.ParseResult) {
 	// Function declaration: function name() { or name() {
 	funcRe := regexp.MustCompile(`(?m)^\s*(?:function\s+)?(\w+)\s*\(\s*\)\s*{`)
 
@@ -69,12 +90,12 @@ func (p *BashParser) extractFunctions(content string, result *types.ParseResult)
 		name := content[match[2]:match[3]]
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeFunction,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindFunction,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "function " + name + "()",
 		}
 
@@ -82,7 +103,7 @@ func (p *BashParser) extractFunctions(content string, result *types.ParseResult)
 	}
 }
 
-func (p *BashParser) extractVariables(lines []string, result *types.ParseResult) {
+func (p *BashParser) extractVariables(lines []string, result *parsing.ParseResult) {
 	// Variable assignment: VAR=value or declare VAR=value
 	varRe := regexp.MustCompile(`^\s*(?:declare\s+(?:-[a-zA-Z]+\s+)?|export\s+|local\s+)?([A-Z_][A-Z0-9_]*)\s*=`)
 
@@ -103,12 +124,12 @@ func (p *BashParser) extractVariables(lines []string, result *types.ParseResult)
 				continue
 			}
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:       name,
-				Type:       types.SymbolTypeVariable,
-				StartLine:  i + 1,
-				EndLine:    i + 1,
-				Visibility: types.VisibilityPublic,
+				Kind:       model.SymbolKindVariable,
+				File:       "", // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: i + 1}, End: model.Position{Line: i + 1}},
+				Visibility: model.VisibilityPublic,
 				Signature:  name,
 			}
 
