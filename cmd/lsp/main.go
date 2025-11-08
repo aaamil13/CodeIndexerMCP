@@ -9,6 +9,7 @@ import (
 	"github.com/aaamil13/CodeIndexerMCP/internal/core"
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
 	"github.com/aaamil13/CodeIndexerMCP/internal/lsp"
+	"github.com/aaamil13/CodeIndexerMCP/internal/utils"
 )
 
 func main() {
@@ -29,7 +30,8 @@ func main() {
 	log.Printf("Database: %s", *dbPath)
 
 	// Initialize database
-	db, err := database.Open(*dbPath) // Changed NewDatabase to Open
+	logger := utils.NewLogger("[LSP Server]")
+	db, err := database.NewManager(*dbPath, logger)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}

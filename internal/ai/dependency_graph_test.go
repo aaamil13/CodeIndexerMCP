@@ -7,13 +7,15 @@ import (
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
+	"github.com/aaamil13/CodeIndexerMCP/internal/utils"
 )
 
 func setupDependencyTestDB(t *testing.T) *database.Manager {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	db, err := database.NewManager(dbPath)
+	logger := utils.NewLogger("[TestDependencyGraph]")
+	db, err := database.NewManager(dbPath, logger)
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)
 	}

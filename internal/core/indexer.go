@@ -443,7 +443,7 @@ func (idx *Indexer) SearchSymbols(opts model.SearchOptions) ([]*model.Symbol, er
 }
 
 // GetFileStructure returns the structure of a file
-func (idx *Indexer) GetFileStructure(filePath string) (*model.FileStructure, error) {
+func (idx *Indexer) GetFileStructure(filePath string) (*model.ParseResult, error) {
 	relPath, err := filepath.Rel(idx.projectPath, filePath)
 	if err != nil {
 		return nil, err
@@ -467,7 +467,7 @@ func (idx *Indexer) GetFileStructure(filePath string) (*model.FileStructure, err
 		return nil, err
 	}
 
-	return &model.FileStructure{
+	return &model.ParseResult{
 		FilePath: filePath,
 		Language: file.Language,
 		Symbols:  symbols,

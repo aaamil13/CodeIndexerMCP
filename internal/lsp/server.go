@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"strconv"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/ai"
 	"github.com/aaamil13/CodeIndexerMCP/internal/core"
@@ -14,7 +15,7 @@ import (
 
 // Server implements a Language Server Protocol server
 type Server struct {
-	db           *database.DB
+	db           *database.Manager
 	indexer      *core.Indexer
 	analyzer     *ai.SemanticAnalyzer
 	capabilities ServerCapabilities
@@ -31,7 +32,7 @@ type Server struct {
 }
 
 // NewServer creates a new LSP server
-func NewServer(db *database.DB, indexer *core.Indexer) *Server {
+func NewServer(db *database.Manager, indexer *core.Indexer) *Server {
 	return &Server{
 		db:         db,
 		indexer:    indexer,
@@ -277,7 +278,7 @@ func (s *Server) handleCompletion(msg *Message) (interface{}, error) {
 	for _, symbol := range symbols {
 		items = append(items, CompletionItem{
 			Label:  symbol.Name,
-			Kind:   symbolTypeToCompletionKind(symbol.Type),
+			Kind:   symbolTypeToCompletionKind(symbol.Kind),
 			Detail: symbol.Signature,
 			Documentation: symbol.Documentation,
 		})
@@ -330,7 +331,11 @@ func (s *Server) handleDefinition(msg *Message) (interface{}, error) {
 	}
 
 	// Get file information
-	file, err := s.db.GetFile(symbol.FileID)
+	projectID, err := s.getProjectIDFromURI(params.TextDocument.URI)
+	if err != nil {
+		return nil, err
+	}
+	file, err := s.db.GetFileByPath(int(projectID), symbol.File)
 	if err != nil {
 		return nil, err
 	}
@@ -338,8 +343,8 @@ func (s *Server) handleDefinition(msg *Message) (interface{}, error) {
 	return Location{
 		URI: "file://" + file.Path,
 		Range: Range{
-			Start: Position{Line: symbol.StartLine - 1, Character: symbol.StartColumn},
-			End:   Position{Line: symbol.EndLine - 1, Character: symbol.EndColumn},
+			Start: Position{Line: symbol.Range.Start.Line - 1, Character: symbol.Range.Start.Column},
+			End:   Position{Line: symbol.Range.End.Line - 1, Character: symbol.Range.End.Column},
 		},
 	}, nil
 }
@@ -366,7 +371,11 @@ func (s *Server) handleReferences(msg *Message) (interface{}, error) {
 	// Convert to LSP locations
 	locations := make([]Location, 0, len(refs))
 	for _, ref := range refs {
-		file, err := s.db.GetFile(ref.FileID)
+		projectID, err := s.getProjectIDFromURI(params.TextDocument.URI) // Assuming 'uri' is available in this scope
+		if err != nil {
+			continue
+		}
+		file, err := s.db.GetFileByPath(int(projectID), ref.FilePath)
 		if err != nil {
 			continue
 		}
@@ -374,8 +383,8 @@ func (s *Server) handleReferences(msg *Message) (interface{}, error) {
 		locations = append(locations, Location{
 			URI: "file://" + file.Path,
 			Range: Range{
-				Start: Position{Line: ref.LineNumber - 1, Character: ref.ColumnNumber},
-				End:   Position{Line: ref.LineNumber - 1, Character: ref.ColumnNumber + len(symbol.Name)},
+				Start: Position{Line: ref.Line - 1, Character: ref.Column},
+				End:   Position{Line: ref.Line - 1, Character: ref.Column + len(symbol.Name)},
 			},
 		})
 	}
@@ -396,8 +405,16 @@ func (s *Server) handleDocumentSymbol(msg *Message) (interface{}, error) {
 		return []DocumentSymbol{}, nil
 	}
 
+	file, err := s.db.GetFile(fileID)
+	if err != nil {
+		return nil, err
+	}
+	if file == nil {
+		return []DocumentSymbol{}, nil
+	}
+
 	// Get symbols for file
-	symbols, err := s.db.GetSymbolsByFile(fileID)
+	symbols, err := s.db.GetSymbolsByFile(file.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -408,14 +425,14 @@ func (s *Server) handleDocumentSymbol(msg *Message) (interface{}, error) {
 		docSymbols = append(docSymbols, DocumentSymbol{
 			Name:   symbol.Name,
 			Detail: symbol.Signature,
-			Kind:   symbolTypeToSymbolKind(symbol.Type),
+			Kind:   symbolTypeToSymbolKind(symbol.Kind),
 			Range: Range{
-				Start: Position{Line: symbol.StartLine - 1, Character: symbol.StartColumn},
-				End:   Position{Line: symbol.EndLine - 1, Character: symbol.EndColumn},
+				Start: Position{Line: symbol.Range.Start.Line - 1, Character: symbol.Range.Start.Column},
+				End:   Position{Line: symbol.Range.End.Line - 1, Character: symbol.Range.End.Column},
 			},
 			SelectionRange: Range{
-				Start: Position{Line: symbol.StartLine - 1, Character: symbol.StartColumn},
-				End:   Position{Line: symbol.StartLine - 1, Character: symbol.StartColumn + len(symbol.Name)},
+				Start: Position{Line: symbol.Range.Start.Line - 1, Character: symbol.Range.Start.Column},
+				End:   Position{Line: symbol.Range.Start.Line - 1, Character: symbol.Range.Start.Column + len(symbol.Name)},
 			},
 		})
 	}
@@ -442,19 +459,17 @@ func (s *Server) handleWorkspaceSymbol(msg *Message) (interface{}, error) {
 	// Convert to LSP symbol information
 	symbolInfo := make([]SymbolInformation, 0, len(symbols))
 	for _, symbol := range symbols {
-		file, err := s.db.GetFile(symbol.FileID)
-		if err != nil {
-			continue
-		}
-
+		// For workspace symbols, we don't have a specific file URI from params.TextDocument.URI
+		// We need to get the file path from the symbol itself.
+		// The symbol.File field contains the absolute path.
 		symbolInfo = append(symbolInfo, SymbolInformation{
 			Name: symbol.Name,
-			Kind: symbolTypeToSymbolKind(symbol.Type),
+			Kind: symbolTypeToSymbolKind(symbol.Kind),
 			Location: Location{
-				URI: "file://" + file.Path,
+				URI: "file://" + symbol.File,
 				Range: Range{
-					Start: Position{Line: symbol.StartLine - 1, Character: symbol.StartColumn},
-					End:   Position{Line: symbol.EndLine - 1, Character: symbol.EndColumn},
+					Start: Position{Line: symbol.Range.Start.Line - 1, Character: symbol.Range.Start.Column},
+					End:   Position{Line: symbol.Range.End.Line - 1, Character: symbol.Range.End.Column},
 				},
 			},
 		})
@@ -501,13 +516,14 @@ func (s *Server) handleRename(msg *Message) (interface{}, error) {
 	changes := make(map[string][]TextEdit)
 
 	// Add edit for definition
-	file, _ := s.db.GetFile(symbol.FileID)
+	projectID, _ := s.getProjectIDFromURI(params.TextDocument.URI) // Assuming 'params.TextDocument.URI' is available
+	file, _ := s.db.GetFileByPath(int(projectID), symbol.File)
 	if file != nil {
 		uri := "file://" + file.Path
 		changes[uri] = append(changes[uri], TextEdit{
 			Range: Range{
-				Start: Position{Line: symbol.StartLine - 1, Character: symbol.StartColumn},
-				End:   Position{Line: symbol.StartLine - 1, Character: symbol.StartColumn + len(symbol.Name)},
+				Start: Position{Line: symbol.Range.Start.Line - 1, Character: symbol.Range.Start.Column},
+				End:   Position{Line: symbol.Range.Start.Line - 1, Character: symbol.Range.Start.Column + len(symbol.Name)},
 			},
 			NewText: params.NewName,
 		})
@@ -515,7 +531,11 @@ func (s *Server) handleRename(msg *Message) (interface{}, error) {
 
 	// Add edits for references
 	for _, ref := range refs {
-		file, err := s.db.GetFile(ref.FileID)
+		projectID, err := s.getProjectIDFromURI(params.TextDocument.URI) // Assuming 'params.TextDocument.URI' is available
+		if err != nil {
+			continue
+		}
+		file, err := s.db.GetFileByPath(int(projectID), ref.FilePath)
 		if err != nil {
 			continue
 		}
@@ -523,8 +543,8 @@ func (s *Server) handleRename(msg *Message) (interface{}, error) {
 		uri := "file://" + file.Path
 		changes[uri] = append(changes[uri], TextEdit{
 			Range: Range{
-				Start: Position{Line: ref.LineNumber - 1, Character: ref.ColumnNumber},
-				End:   Position{Line: ref.LineNumber - 1, Character: ref.ColumnNumber + len(symbol.Name)},
+				Start: Position{Line: ref.Line - 1, Character: ref.Column},
+				End:   Position{Line: ref.Line - 1, Character: ref.Column + len(symbol.Name)},
 			},
 			NewText: params.NewName,
 		})
@@ -564,7 +584,7 @@ func (s *Server) handleAnalyze(msg *Message) (interface{}, error) {
 	}
 
 	// Run semantic analysis on project
-	result, err := s.analyzer.AnalyzeProject(file.ProjectID)
+	result, err := s.analyzer.AnalyzeProject(strconv.Itoa(file.ProjectID))
 	if err != nil {
 		return nil, err
 	}
@@ -585,9 +605,17 @@ func (s *Server) handleTypeCheck(msg *Message) (interface{}, error) {
 		return nil, err
 	}
 
+	file, err := s.db.GetFile(fileID)
+	if err != nil {
+		return nil, err
+	}
+	if file == nil {
+		return nil, fmt.Errorf("file not found for ID: %d", fileID)
+	}
+
 	// Use type validator
 	validator := ai.NewTypeValidator(s.db)
-	validation, err := validator.ValidateFile(fileID)
+	validation, err := validator.ValidateFile(file.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -608,7 +636,7 @@ func (s *Server) handleCallGraph(msg *Message) (interface{}, error) {
 		return nil, err
 	}
 
-	callGraph, err := s.analyzer.AnalyzeCallGraph(params.ProjectID)
+	callGraph, err := s.analyzer.AnalyzeCallGraph(strconv.Itoa(int(params.ProjectID)))
 	if err != nil {
 		return nil, err
 	}
@@ -665,14 +693,22 @@ func (s *Server) getSymbolAtPosition(uri string, pos Position) (*model.Symbol, e
 		return nil, err
 	}
 
-	symbols, err := s.db.GetSymbolsByFile(fileID)
+	file, err := s.db.GetFile(fileID)
+	if err != nil {
+		return nil, err
+	}
+	if file == nil {
+		return nil, nil
+	}
+
+	symbols, err := s.db.GetSymbolsByFile(file.Path)
 	if err != nil {
 		return nil, err
 	}
 
 	// Find symbol at position (line, column)
 	for _, symbol := range symbols {
-		if pos.Line+1 >= symbol.StartLine && pos.Line+1 <= symbol.EndLine {
+		if pos.Line+1 >= symbol.Range.Start.Line && pos.Line+1 <= symbol.Range.End.Line {
 			return symbol, nil
 		}
 	}
@@ -686,8 +722,16 @@ func (s *Server) getSymbolsInScope(uri string, pos Position) ([]*model.Symbol, e
 		return nil, err
 	}
 
+	file, err := s.db.GetFile(fileID)
+	if err != nil {
+		return nil, err
+	}
+	if file == nil {
+		return nil, nil
+	}
+
 	// Get all symbols in file (simplified - would need proper scope analysis)
-	return s.db.GetSymbolsByFile(fileID)
+	return s.db.GetSymbolsByFile(file.Path)
 }
 
 func (s *Server) getFileIDFromURI(uri string) (int64, error) {
@@ -697,14 +741,14 @@ func (s *Server) getFileIDFromURI(uri string) (int64, error) {
 		return 0, err
 	}
 
-	file, err := s.db.GetFileByPath(projectID, path)
+	file, err := s.db.GetFileByPath(int(projectID), path)
 	if err != nil {
 		return 0, err
 	}
 	if file == nil {
 		return 0, fmt.Errorf("file not found: %s", path)
 	}
-	return file.ID, nil
+	return int64(file.ID), nil
 }
 
 func (s *Server) getProjectIDFromURI(uri string) (int64, error) {
@@ -716,7 +760,7 @@ func (s *Server) getProjectIDFromURI(uri string) (int64, error) {
 	if project == nil {
 		return 0, fmt.Errorf("project not found for uri: %s", uri)
 	}
-	return project.ID, nil
+	return int64(project.ID), nil
 }
 
 func uriToPath(uri string) string {

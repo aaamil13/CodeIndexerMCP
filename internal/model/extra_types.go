@@ -10,8 +10,8 @@ type SearchOptions struct {
 	Limit    int
 }
 
-// FileStructure represents the structure of a file
-type FileStructure struct {
+// ParseResult represents the structure of a file
+type ParseResult struct {
 	FilePath string
 	Language string
 	Symbols  []*Symbol
@@ -232,6 +232,7 @@ type TypeMismatch struct {
 	Found       string
 	FilePath    string
 	Line        int
+	Column      int    // Added
 	Description string
 }
 
@@ -240,7 +241,10 @@ type UndefinedUsage struct {
 	SymbolName  string
 	FilePath    string
 	Line        int
+	Column      int    // Added
 	Description string
+	Severity    string // Added
+	UsageType   string // Added
 }
 
 // MissingMethod represents a missing method on a type
@@ -249,6 +253,8 @@ type MissingMethod struct {
 	MethodName       string
 	AvailableMethods []string
 	Suggestion       string
+	Line             int    // Added
+	Column           int    // Added
 }
 
 // InvalidCall represents an invalid function call
@@ -343,6 +349,71 @@ type CallGraphEdge struct {
 	FromSymbolID string
 	ToSymbolID   string
 	CallSites    int
+}
+
+// FrameworkComponent represents a UI component detected by a framework analyzer
+type FrameworkComponent struct {
+	Type       string                 `json:"type"` // e.g., "function_component", "class_component"
+	Name       string                 `json:"name"`
+	Props      []*ComponentProp       `json:"props,omitempty"`
+	Events     []string               `json:"events,omitempty"`
+	Lifecycle  []string               `json:"lifecycle,omitempty"` // e.g., "useEffect", "componentDidMount"
+	Decorators []string               `json:"decorators,omitempty"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// ComponentProp represents a prop/input for a UI component
+type ComponentProp struct {
+	Name         string `json:"name"`
+	Type         string `json:"type,omitempty"`
+	DefaultValue string `json:"default_value,omitempty"`
+	IsOptional   bool   `json:"is_optional"`
+}
+
+// Model represents a database model (e.g., Django Model, SQLAlchemy Model)
+type Model struct {
+	Name          string            `json:"name"`
+	Fields        []*ModelField     `json:"fields,omitempty"`
+	Methods       []*Method         `json:"methods,omitempty"`
+	MetaOptions   map[string]string `json:"meta_options,omitempty"`
+	Relationships []*Relationship   `json:"relationships,omitempty"`
+}
+
+// Route represents a web route or endpoint
+type Route struct {
+	Path        string            `json:"path"`
+	Method      string            `json:"method,omitempty"` // e.g., "GET", "POST"
+	Handler     string            `json:"handler,omitempty"`
+	Middleware  []string          `json:"middleware,omitempty"`
+	QueryParams []string          `json:"query_params,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+}
+
+// ModelField represents a field in a database model
+type ModelField struct {
+	Name         string            `json:"name"`
+	Type         string            `json:"type"`
+	DefaultValue string            `json:"default_value,omitempty"`
+	IsPrimaryKey bool              `json:"is_primary_key,omitempty"`
+	IsForeignKey bool              `json:"is_foreign_key,omitempty"`
+	RelatedModel string            `json:"related_model,omitempty"`
+	Metadata     map[string]string `json:"metadata,omitempty"`
+}
+
+// RouteParameter represents a parameter in a web route
+type RouteParameter struct {
+	Name         string `json:"name"`
+	Type         string `json:"type,omitempty"`
+	IsOptional   bool   `json:"is_optional"`
+	DefaultValue string `json:"default_value,omitempty"`
+}
+
+// ModelRelation represents a relationship between two database models
+type ModelRelation struct {
+	SourceModel string `json:"source_model"`
+	TargetModel string `json:"target_model"`
+	Type        string `json:"type"` // e.g., "ForeignKey", "ManyToManyField", "OneToOneField"
+	FieldName   string `json:"field_name,omitempty"`
 }
 
 type CodeContext struct {

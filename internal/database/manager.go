@@ -103,6 +103,27 @@ func (m *Manager) GetFileByPath(projectID int, relPath string) (*model.File, err
 	return nil, nil
 }
 
+func (m *Manager) GetFile(id int64) (*model.File, error) {
+	query := `
+        SELECT id, project_id, path, relative_path, language, size, lines_of_code, hash, last_modified, last_indexed
+        FROM files
+        WHERE id = ?
+    `
+	row := m.db.QueryRow(query, id)
+
+	f := &model.File{}
+	err := row.Scan(
+		&f.ID, &f.ProjectID, &f.Path, &f.RelativePath, &f.Language, &f.Size, &f.LinesOfCode, &f.Hash, &f.LastModified, &f.LastIndexed,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
 func (m *Manager) UpdateProject(project *model.Project) error {
 	// TODO: Implement this properly
 	return nil

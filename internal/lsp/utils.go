@@ -6,35 +6,35 @@ import (
 )
 
 // symbolTypeToSymbolKind converts internal symbol type to LSP SymbolKind
-func symbolTypeToSymbolKind(symbolType model.SymbolType) SymbolKind {
-	switch symbolType {
-	case model.SymbolTypeFunction:
+func symbolTypeToSymbolKind(symbolKind model.SymbolKind) SymbolKind {
+	switch symbolKind {
+	case model.SymbolKindFunction:
 		return SymbolKindFunction
-	case model.SymbolTypeMethod:
+	case model.SymbolKindMethod:
 		return SymbolKindMethod
-	case model.SymbolTypeClass:
+	case model.SymbolKindClass:
 		return SymbolKindClass
-	case model.SymbolTypeInterface:
+	case model.SymbolKindInterface:
 		return SymbolKindInterface
-	case model.SymbolTypeVariable:
+	case model.SymbolKindVariable:
 		return SymbolKindVariable
-	case model.SymbolTypeConstant:
+	case model.SymbolKindConstant:
 		return SymbolKindConstant
-	case model.SymbolTypeStruct:
+	case model.SymbolKindStruct:
 		return SymbolKindStruct
-	case model.SymbolTypeEnum:
+	case model.SymbolKindEnum:
 		return SymbolKindEnum
-	case model.SymbolTypeConstructor:
+	case model.SymbolKindConstructor:
 		return SymbolKindConstructor
-	case model.SymbolTypeField:
+	case model.SymbolKindField:
 		return SymbolKindField
-	case model.SymbolTypeProperty:
+	case model.SymbolKindProperty:
 		return SymbolKindProperty
-	case model.SymbolTypeModule:
+	case model.SymbolKindModule:
 		return SymbolKindModule
-	case model.SymbolTypeNamespace:
+	case model.SymbolKindNamespace:
 		return SymbolKindNamespace
-	case model.SymbolTypePackage:
+	case model.SymbolKindPackage:
 		return SymbolKindPackage
 	default:
 		return SymbolKindVariable
@@ -42,31 +42,31 @@ func symbolTypeToSymbolKind(symbolType model.SymbolType) SymbolKind {
 }
 
 // symbolTypeToCompletionKind converts internal symbol type to LSP CompletionItemKind
-func symbolTypeToCompletionKind(symbolType model.SymbolType) CompletionItemKind {
-	switch symbolType {
-	case model.SymbolTypeFunction:
+func symbolTypeToCompletionKind(symbolKind model.SymbolKind) CompletionItemKind {
+	switch symbolKind {
+	case model.SymbolKindFunction:
 		return CompletionItemKindFunction
-	case model.SymbolTypeMethod:
+	case model.SymbolKindMethod:
 		return CompletionItemKindMethod
-	case model.SymbolTypeClass:
+	case model.SymbolKindClass:
 		return CompletionItemKindClass
-	case model.SymbolTypeInterface:
+	case model.SymbolKindInterface:
 		return CompletionItemKindInterface
-	case model.SymbolTypeVariable:
+	case model.SymbolKindVariable:
 		return CompletionItemKindVariable
-	case model.SymbolTypeConstant:
+	case model.SymbolKindConstant:
 		return CompletionItemKindConstant
-	case model.SymbolTypeStruct:
+	case model.SymbolKindStruct:
 		return CompletionItemKindStruct
-	case model.SymbolTypeEnum:
+	case model.SymbolKindEnum:
 		return CompletionItemKindEnum
-	case model.SymbolTypeConstructor:
+	case model.SymbolKindConstructor:
 		return CompletionItemKindConstructor
-	case model.SymbolTypeField:
+	case model.SymbolKindField:
 		return CompletionItemKindField
-	case model.SymbolTypeProperty:
+	case model.SymbolKindProperty:
 		return CompletionItemKindProperty
-	case model.SymbolTypeModule:
+	case model.SymbolKindModule:
 		return CompletionItemKindModule
 	default:
 		return CompletionItemKindText
@@ -94,18 +94,18 @@ func createDiagnosticFromUndefinedUsage(usage *model.UndefinedUsage) Diagnostic 
 	return Diagnostic{
 		Range: Range{
 			Start: Position{Line: usage.Line - 1, Character: usage.Column},
-			End:   Position{Line: usage.Line - 1, Character: usage.Column + len(usage.Name)},
+			End:   Position{Line: usage.Line - 1, Character: usage.Column + len(usage.SymbolName)},
 		},
 		Severity: severityToDiagnosticSeverity(usage.Severity),
 		Source:   "codeindexer",
-		Message:  fmt.Sprintf("Undefined %s: %s", usage.UsageType, usage.Name),
+		Message:  fmt.Sprintf("Undefined %s: %s", usage.UsageType, usage.SymbolName),
 	}
 }
 
 // createDiagnosticFromTypeMismatch creates an LSP diagnostic from type mismatch
 func createDiagnosticFromTypeMismatch(mismatch *model.TypeMismatch) Diagnostic {
 	message := fmt.Sprintf("Type mismatch: expected %s, got %s",
-		mismatch.ExpectedType, mismatch.ActualType)
+		mismatch.Expected, mismatch.Found)
 
 	return Diagnostic{
 		Range: Range{

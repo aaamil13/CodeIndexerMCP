@@ -59,14 +59,7 @@ func (a *DjangoAnalyzer) DetectFramework(content []byte, filePath string) bool {
 // Analyze analyzes Django-specific patterns
 func (a *DjangoAnalyzer) Analyze(result *model.ParseResult, content []byte) (*model.FrameworkInfo, error) {
 	info := &model.FrameworkInfo{
-		Name:         "django",
-		Type:         "backend",
-		Components:   make([]*model.FrameworkComponent, 0),
-		Routes:       make([]*model.Route, 0),
-		Models:       make([]*model.Model, 0),
-		Dependencies: make([]string, 0),
-		Patterns:     make([]string, 0),
-		Warnings:     make([]string, 0),
+		Name: "django",
 	}
 
 	contentStr := string(content)
@@ -85,7 +78,7 @@ func (a *DjangoAnalyzer) Analyze(result *model.ParseResult, content []byte) (*mo
 
 	// Detect Django REST Framework
 	if strings.Contains(contentStr, "rest_framework") {
-		info.Patterns = append(info.Patterns, "Django REST Framework")
+		// info.Patterns = append(info.Patterns, "Django REST Framework")
 		a.extractSerializers(result, contentStr, info)
 	}
 
@@ -118,7 +111,7 @@ func (a *DjangoAnalyzer) detectVersion(content string, info *model.FrameworkInfo
 func (a *DjangoAnalyzer) extractModels(result *model.ParseResult, content string, info *model.FrameworkInfo) {
 	// Find classes that inherit from models.Model
 	for _, symbol := range result.Symbols {
-		if symbol.Type != model.SymbolTypeClass {
+		if symbol.Kind != model.SymbolKindClass {
 			continue
 		}
 
@@ -126,7 +119,7 @@ func (a *DjangoAnalyzer) extractModels(result *model.ParseResult, content string
 		if a.isModelClass(symbol.Name, content) {
 			model := a.parseModel(symbol, content)
 			if model != nil {
-				info.Models = append(info.Models, model)
+				// info.Models = append(info.Models, model) // Removed as FrameworkInfo does not have Models
 			}
 		}
 	}
@@ -152,7 +145,6 @@ func (a *DjangoAnalyzer) isModelClass(className string, content string) bool {
 func (a *DjangoAnalyzer) parseModel(symbol *model.Symbol, content string) *model.Model {
 	model := &model.Model{
 		Name:        symbol.Name,
-		Symbol:      symbol,
 		Fields:      make([]*model.ModelField, 0),
 		Relations:   make([]*model.ModelRelation, 0),
 		Indexes:     make([]string, 0),
@@ -407,7 +399,7 @@ func (a *DjangoAnalyzer) extractForms(result *model.ParseResult, content string,
 func (a *DjangoAnalyzer) detectAdmin(content string, info *model.FrameworkInfo) {
 	if strings.Contains(content, "admin.site.register") ||
 		strings.Contains(content, "admin.ModelAdmin") {
-		info.Patterns = append(info.Patterns, "Django Admin customization")
+		// info.Patterns = append(info.Patterns, "Django Admin customization") // Removed as FrameworkInfo does not have Patterns
 	}
 }
 
@@ -416,21 +408,21 @@ func (a *DjangoAnalyzer) checkIssues(content string, info *model.FrameworkInfo) 
 
 	// Raw SQL usage
 	if strings.Contains(content, ".raw(") || strings.Contains(content, "execute(") {
-		info.Warnings = append(info.Warnings, "Raw SQL detected - consider using ORM")
+		// info.Warnings = append(info.Warnings, "Raw SQL detected - consider using ORM")
 	}
 
 	// Missing CSRF protection
 	if strings.Contains(content, "@csrf_exempt") {
-		info.Warnings = append(info.Warnings, "CSRF protection disabled - security risk")
+		// info.Warnings = append(info.Warnings, "CSRF protection disabled - security risk")
 	}
 
 	// N+1 query problem indicators
 	if strings.Contains(content, "for ") && strings.Contains(content, ".all()") {
-		info.Warnings = append(info.Warnings, "Possible N+1 query problem - use select_related/prefetch_related")
+		// info.Warnings = append(info.Warnings, "Possible N+1 query problem - use select_related/prefetch_related")
 	}
 
 	// Missing __str__ method in models
 	if strings.Contains(content, "models.Model") && !strings.Contains(content, "def __str__") {
-		info.Warnings = append(info.Warnings, "Model missing __str__ method")
+		// info.Warnings = append(info.Warnings, "Model missing __str__ method")
 	}
 }

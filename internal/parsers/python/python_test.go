@@ -26,8 +26,8 @@ def add(a, b):
 	if sym.Name != "add" {
 		t.Errorf("Expected name 'add', got '%s'", sym.Name)
 	}
-	if sym.Type != model.SymbolTypeFunction {
-		t.Errorf("Expected type function, got %s", sym.Type)
+	if sym.Kind != model.SymbolKindFunction {
+		t.Errorf("Expected type function, got %s", sym.Kind)
 	}
 	if sym.Signature != "def add(a, b):" {
 		t.Errorf("Expected signature 'def add(a, b):', got '%s'", sym.Signature)
@@ -65,7 +65,7 @@ class User:
 	// Find the class
 	var class *model.Symbol
 	for _, sym := range result.Symbols {
-		if sym.Type == model.SymbolTypeClass {
+		if sym.Kind == model.SymbolKindClass {
 			class = sym
 			break
 		}
@@ -104,7 +104,7 @@ class Calculator:
 	// Find the method
 	var method *model.Symbol
 	for _, sym := range result.Symbols {
-		if sym.Type == model.SymbolTypeMethod {
+		if sym.Kind == model.SymbolKindMethod {
 			method = sym
 			break
 		}
@@ -141,7 +141,7 @@ from .local import helper
 
 	imports := make(map[string]bool)
 	for _, imp := range result.Imports {
-		imports[imp.Source] = true
+		imports[imp.Path] = true
 	}
 
 	if !imports["os"] {
@@ -175,8 +175,8 @@ async def fetch_data(url):
 	if sym.Name != "fetch_data" {
 		t.Errorf("Expected name 'fetch_data', got '%s'", sym.Name)
 	}
-	if sym.Type != model.SymbolTypeFunction {
-		t.Errorf("Expected type function, got %s", sym.Type)
+	if sym.Kind != model.SymbolKindFunction {
+		t.Errorf("Expected type function, got %s", sym.Kind)
 	}
 	if sym.Signature != "async def fetch_data(url):" {
 		t.Errorf("Unexpected signature: %s", sym.Signature)
@@ -206,8 +206,8 @@ def prop(self):
 	}
 
 	for _, sym := range result.Symbols {
-		if sym.Type != model.SymbolTypeFunction {
-			t.Errorf("Expected type function, got %s", sym.Type)
+		if sym.Kind != model.SymbolKindFunction {
+			t.Errorf("Expected type function, got %s", sym.Kind)
 		}
 	}
 }
@@ -236,7 +236,7 @@ class MyClass:
 	}
 
 	for _, sym := range result.Symbols {
-		if sym.Type != model.SymbolTypeMethod && sym.Type != model.SymbolTypeClass {
+		if sym.Kind != model.SymbolKindMethod && sym.Kind != model.SymbolKindClass {
 			continue
 		}
 
@@ -275,8 +275,8 @@ _private_var = "secret"
 	}
 
 	for _, sym := range result.Symbols {
-		if sym.Type != model.SymbolTypeVariable {
-			t.Errorf("Expected type variable, got %s", sym.Type)
+		if sym.Kind != model.SymbolKindVariable {
+			t.Errorf("Expected type variable, got %s", sym.Kind)
 		}
 
 		if sym.Name == "MAX_SIZE" && sym.Visibility != model.VisibilityPublic {
@@ -352,8 +352,8 @@ class Person:
 		t.Fatal("Constructor not found")
 	}
 
-	if constructor.Type != model.SymbolTypeMethod {
-		t.Errorf("Expected constructor to be a method, got %s", constructor.Type)
+	if constructor.Kind != model.SymbolKindMethod {
+		t.Errorf("Expected constructor to be a method, got %s", constructor.Kind)
 	}
 }
 

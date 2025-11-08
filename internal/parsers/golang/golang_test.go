@@ -30,8 +30,8 @@ func Add(a, b int) int {
 	if sym.Name != "Add" {
 		t.Errorf("Expected name 'Add', got '%s'", sym.Name)
 	}
-	if sym.Type != model.SymbolTypeFunction {
-		t.Errorf("Expected type function, got %s", sym.Type)
+	if sym.Kind != model.SymbolKindFunction {
+		t.Errorf("Expected type function, got %s", sym.Kind)
 	}
 	if sym.Signature != "func Add(a, b int) int" {
 		t.Errorf("Expected signature 'func Add(a, b int) int', got '%s'", sym.Signature)
@@ -39,8 +39,11 @@ func Add(a, b int) int {
 	if sym.Documentation != "Add adds two numbers" {
 		t.Errorf("Expected documentation 'Add adds two numbers', got '%s'", sym.Documentation)
 	}
-	if !sym.IsExported {
-		t.Error("Expected Add to be exported")
+	if sym.Name == "publicFunc" && sym.Visibility != model.VisibilityPublic {
+		t.Error("Expected publicFunc to be exported")
+	}
+	if sym.Name == "privateFunc" && sym.Visibility == model.VisibilityPublic {
+		t.Error("Expected privateFunc to not be exported")
 	}
 }
 
@@ -67,8 +70,8 @@ type User struct {
 	if sym.Name != "User" {
 		t.Errorf("Expected name 'User', got '%s'", sym.Name)
 	}
-	if sym.Type != model.SymbolTypeStruct {
-		t.Errorf("Expected type struct, got %s", sym.Type)
+	if sym.Kind != model.SymbolKindStruct {
+		t.Errorf("Expected type struct, got %s", sym.Kind)
 	}
 	if sym.Documentation != "User represents a user" {
 		t.Errorf("Expected documentation 'User represents a user', got '%s'", sym.Documentation)
@@ -98,8 +101,8 @@ type Writer interface {
 	if sym.Name != "Writer" {
 		t.Errorf("Expected name 'Writer', got '%s'", sym.Name)
 	}
-	if sym.Type != model.SymbolTypeInterface {
-		t.Errorf("Expected type interface, got %s", sym.Type)
+	if sym.Kind != model.SymbolKindInterface {
+		t.Errorf("Expected type interface, got %s", sym.Kind)
 	}
 }
 
@@ -127,7 +130,7 @@ func (c *Calculator) Calculate(x, y int) int {
 	// Find the method
 	var method *model.Symbol
 	for _, sym := range result.Symbols {
-		if sym.Type == model.SymbolTypeMethod {
+		if sym.Kind == model.SymbolKindMethod {
 			method = sym
 			break
 		}
@@ -167,7 +170,7 @@ import (
 	// Check for specific imports
 	imports := make(map[string]bool)
 	for _, imp := range result.Imports {
-		imports[imp.Source] = true
+		imports[imp.Path] = true
 	}
 
 	if !imports["fmt"] {
@@ -200,8 +203,8 @@ const (
 	}
 
 	for _, sym := range result.Symbols {
-		if sym.Type != model.SymbolTypeConstant {
-			t.Errorf("Expected type constant, got %s", sym.Type)
+		if sym.Kind != model.SymbolKindConstant {
+			t.Errorf("Expected type constant, got %s", sym.Kind)
 		}
 	}
 }
@@ -225,8 +228,8 @@ var (
 	}
 
 	for _, sym := range result.Symbols {
-		if sym.Type != model.SymbolTypeVariable {
-			t.Errorf("Expected type variable, got %s", sym.Type)
+		if sym.Kind != model.SymbolKindVariable {
+			t.Errorf("Expected type variable, got %s", sym.Kind)
 		}
 	}
 }
@@ -249,13 +252,12 @@ func privateFunc() {}
 	}
 
 	for _, sym := range result.Symbols {
-		if sym.Name == "publicFunc" && !sym.IsExported {
-			t.Error("Expected publicFunc to be exported")
-		}
-		if sym.Name == "privateFunc" && sym.IsExported {
-			t.Error("Expected privateFunc to not be exported")
-		}
-	}
+			if sym.Name == "publicFunc" && sym.Visibility != model.VisibilityPublic {
+				t.Error("Expected publicFunc to be exported")
+			}
+			if sym.Name == "privateFunc" && sym.Visibility == model.VisibilityPublic {
+				t.Error("Expected privateFunc to not be exported")
+			}	}
 }
 
 func TestParseMultilineDocumentation(t *testing.T) {

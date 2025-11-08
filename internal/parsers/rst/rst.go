@@ -2,6 +2,7 @@ package rst
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
@@ -96,7 +97,7 @@ func (p *ReStructuredTextParser) extractSections(lines []string, result *parsing
 						Signature:  title,
 						Metadata: map[string]string{
 							"header":       "true",
-							"header_level": string(level),
+							"header_level": strconv.Itoa(level),
 						},
 					}
 
@@ -129,7 +130,7 @@ func (p *ReStructuredTextParser) extractSections(lines []string, result *parsing
 							Signature:  title,
 							Metadata: map[string]string{
 								"header":       "true",
-								"header_level": string(level),
+								"header_level": strconv.Itoa(level),
 								"overline":     "true",
 							},
 						}

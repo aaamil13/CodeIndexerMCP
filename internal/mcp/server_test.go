@@ -113,8 +113,7 @@ func TestFunction() string {
 
 	// Call search_symbols tool
 	params := model.SearchOptions{
-		Query:     "TestFunction",
-		ProjectID: indexer.GetProject().ID,
+		Query: "TestFunction",
 	}
 	paramsJSON, _ := json.Marshal(params)
 
@@ -169,9 +168,9 @@ func (s *Server) Start() {
 		t.Fatalf("handleGetFileStructure failed: %v", err)
 	}
 
-	structure, ok := result.(*model.FileStructure)
+	structure, ok := result.(*model.ParseResult)
 	if !ok {
-		t.Fatal("Expected FileStructure result")
+		t.Fatal("Expected ParseResult result")
 	}
 
 	if structure.FilePath == "" {
@@ -344,11 +343,11 @@ func User() {
 		t.Fatal("Expected ChangeImpact result")
 	}
 
-	if impact.Symbol == nil {
-		t.Error("Expected symbol in impact")
+	if impact == nil {
+		t.Fatal("Expected ChangeImpact result")
 	}
 
-	if impact.RiskLevel == "" {
+	if impact.RiskLevel <= 0.0 {
 		t.Error("Expected risk level in impact")
 	}
 }
@@ -388,11 +387,11 @@ func Complex(x int) int {
 		t.Fatal("Expected CodeMetrics result")
 	}
 
-	if metrics.FunctionName == "" {
-		t.Error("Expected function name in metrics")
+	if metrics.SymbolName == "" {
+		t.Error("Expected symbol name in metrics")
 	}
 
-	if metrics.CyclomaticComplexity == 0 {
+	if metrics.Cyclomatic == 0 {
 		t.Error("Expected non-zero cyclomatic complexity")
 	}
 }

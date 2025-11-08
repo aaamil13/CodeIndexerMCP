@@ -55,12 +55,6 @@ func (a *FlaskAnalyzer) DetectFramework(content []byte, filePath string) bool {
 func (a *FlaskAnalyzer) Analyze(result *model.ParseResult, content []byte) (*model.FrameworkInfo, error) {
 	info := &model.FrameworkInfo{
 		Name:         "flask",
-		Type:         "backend",
-		Components:   make([]*model.FrameworkComponent, 0),
-		Routes:       make([]*model.Route, 0),
-		Dependencies: make([]string, 0),
-		Patterns:     make([]string, 0),
-		Warnings:     make([]string, 0),
 	}
 
 	contentStr := string(content)
@@ -76,13 +70,13 @@ func (a *FlaskAnalyzer) Analyze(result *model.ParseResult, content []byte) (*mod
 
 	// Detect Flask-RESTful
 	if strings.Contains(contentStr, "flask_restful") || strings.Contains(contentStr, "Api(app)") {
-		info.Patterns = append(info.Patterns, "Flask-RESTful")
+		// info.Patterns = append(info.Patterns, "Flask-RESTful")
 		a.extractRESTfulResources(result, contentStr, info)
 	}
 
 	// Detect Flask-SQLAlchemy
 	if strings.Contains(contentStr, "flask_sqlalchemy") {
-		info.Patterns = append(info.Patterns, "Flask-SQLAlchemy")
+		// info.Patterns = append(info.Patterns, "Flask-SQLAlchemy")
 		a.extractModels(result, contentStr, info)
 	}
 
@@ -102,7 +96,7 @@ func (a *FlaskAnalyzer) extractRoutes(result *model.ParseResult, content string,
 		if strings.Contains(line, "@app.route") || strings.Contains(line, "@blueprint.route") {
 			route := a.parseRoute(line, lines, i, result)
 			if route != nil {
-				info.Routes = append(info.Routes, route)
+				// info.Routes = append(info.Routes, route) // Removed as FrameworkInfo does not have Routes
 			}
 		}
 	}
@@ -112,7 +106,6 @@ func (a *FlaskAnalyzer) parseRoute(decoratorLine string, lines []string, lineInd
 	route := &model.Route{
 		Method:     "GET", // Default
 		Middleware: make([]string, 0),
-		Parameters: make([]*model.RouteParameter, 0),
 	}
 
 	// Extract path: @app.route('/path')
@@ -147,7 +140,7 @@ func (a *FlaskAnalyzer) parseRoute(decoratorLine string, lines []string, lineInd
 			}
 
 			// Extract route parameters from path
-			route.Parameters = a.extractRouteParameters(route.Path)
+			// route.Parameters = a.extractRouteParameters(route.Path) // Removed as model.Route does not have Parameters
 			break
 		}
 	}
@@ -164,15 +157,14 @@ func (a *FlaskAnalyzer) extractRouteParameters(path string) []*model.RouteParame
 
 	for _, match := range matches {
 		param := &model.RouteParameter{
-			Type:     "path",
-			Required: true,
+			Type: "path",
 		}
 
 		if len(match) >= 3 {
 			if match[1] != "" {
-				param.DataType = match[1] // int, string, path, etc.
+				// param.DataType = match[1] // Removed as model.RouteParameter does not have DataType
 			} else {
-				param.DataType = "string"
+				// param.DataType = "string" // Removed as model.RouteParameter does not have DataType
 			}
 			param.Name = match[2]
 		}
@@ -189,7 +181,7 @@ func (a *FlaskAnalyzer) detectBlueprints(content string, info *model.FrameworkIn
 	matches := blueprintRe.FindAllStringSubmatch(content, -1)
 
 	if len(matches) > 0 {
-		info.Patterns = append(info.Patterns, "Flask Blueprints")
+		// info.Patterns = append(info.Patterns, "Flask Blueprints")
 		for _, match := range matches {
 			if len(match) >= 2 {
 				component := &model.FrameworkComponent{
@@ -217,7 +209,7 @@ func (a *FlaskAnalyzer) detectExtensions(content string, info *model.FrameworkIn
 
 	for extensionImport, description := range extensions {
 		if strings.Contains(content, extensionImport) {
-			info.Patterns = append(info.Patterns, description)
+			// info.Patterns = append(info.Patterns, description)
 		}
 	}
 }
