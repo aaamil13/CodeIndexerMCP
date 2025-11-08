@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/core"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 )
 
 func setupTestMCPServer(t *testing.T) (*Server, *core.Indexer, string) {
@@ -112,7 +112,7 @@ func TestFunction() string {
 	indexer.IndexAll()
 
 	// Call search_symbols tool
-	params := types.SearchOptions{
+	params := model.SearchOptions{
 		Query:     "TestFunction",
 		ProjectID: indexer.GetProject().ID,
 	}
@@ -169,7 +169,7 @@ func (s *Server) Start() {
 		t.Fatalf("handleGetFileStructure failed: %v", err)
 	}
 
-	structure, ok := result.(*types.FileStructure)
+	structure, ok := result.(*model.FileStructure)
 	if !ok {
 		t.Fatal("Expected FileStructure result")
 	}
@@ -212,7 +212,7 @@ func Func1() {}`,
 		t.Fatalf("handleGetProjectOverview failed: %v", err)
 	}
 
-	overview, ok := result.(*types.ProjectOverview)
+	overview, ok := result.(*model.ProjectOverview)
 	if !ok {
 		t.Fatal("Expected ProjectOverview result")
 	}
@@ -255,7 +255,7 @@ func Main() {
 		t.Fatalf("handleGetSymbolDetails failed: %v", err)
 	}
 
-	details, ok := result.(*types.SymbolDetails)
+	details, ok := result.(*model.SymbolDetails)
 	if !ok {
 		t.Fatal("Expected SymbolDetails result")
 	}
@@ -296,7 +296,7 @@ func Process(data string) string {
 		t.Fatalf("handleGetCodeContext failed: %v", err)
 	}
 
-	context, ok := result.(*types.CodeContext)
+	context, ok := result.(*model.CodeContext)
 	if !ok {
 		t.Fatal("Expected CodeContext result")
 	}
@@ -339,7 +339,7 @@ func User() {
 		t.Fatalf("handleAnalyzeChangeImpact failed: %v", err)
 	}
 
-	impact, ok := result.(*types.ChangeImpact)
+	impact, ok := result.(*model.ChangeImpact)
 	if !ok {
 		t.Fatal("Expected ChangeImpact result")
 	}
@@ -383,7 +383,7 @@ func Complex(x int) int {
 		t.Fatalf("handleGetCodeMetrics failed: %v", err)
 	}
 
-	metrics, ok := result.(*types.CodeMetrics)
+	metrics, ok := result.(*model.CodeMetrics)
 	if !ok {
 		t.Fatal("Expected CodeMetrics result")
 	}

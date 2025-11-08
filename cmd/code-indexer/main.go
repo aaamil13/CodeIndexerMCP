@@ -11,7 +11,7 @@ import (
 	"github.com/aaamil13/CodeIndexerMCP/internal/core"
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/mcp"
-	// "github.com/aaamil13/CodeIndexerMCP/internal/utils" // Removed unused import
+	"github.com/aaamil13/CodeIndexerMCP/internal/utils" // Import the utils package
 )
 
 func main() {
@@ -22,6 +22,7 @@ func main() {
 }
 
 func run() error {
+	utils.SetLevel(utils.DEBUG) // Set log level to DEBUG
 	if len(os.Args) < 2 {
 		printUsage()
 		return nil

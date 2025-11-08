@@ -196,7 +196,6 @@ package mylang
 
 import (
     "github.com/aaamil13/CodeIndexerMCP/internal/parser"
-    "github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
 
 type MyLangParser struct {
@@ -257,10 +256,6 @@ func TestMyLangParser(t *testing.T) {
 ```go
 // internal/parsers/analyzers/myframework/myframework.go
 package myframework
-
-import (
-    "github.com/aaamil13/CodeIndexerMCP/pkg/types"
-)
 
 type MyFrameworkAnalyzer struct{}
 

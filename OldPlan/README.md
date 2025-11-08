@@ -406,7 +406,6 @@ package mylang
 
 import (
     "github.com/aaamil13/CodeIndexerMCP/internal/parser"
-    "github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
 
 type MyLangParser struct {

@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sync"
 	"time"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/ai"
@@ -153,7 +152,7 @@ func (idx *Indexer) Initialize() error {
 	}
 
 	// Open database
-	dbPath := filepath.Join(indexDir, "index.db")
+	dbPath := filepath.Join(indexDir, "index_test.db") // Changed from index.db
 	db, err := database.NewManager(dbPath, idx.logger) // Pass idx.logger here
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
@@ -338,6 +337,11 @@ func (idx *Indexer) IndexFile(filePath string) error {
 			symbol.ID = utils.GenerateID(symbol.File, symbol.Name, string(symbol.Kind), symbol.Range.Start.Line)
 			symbol.CreatedAt = time.Now()
 			symbol.UpdatedAt = time.Now()
+			symbol.Language = file.Language   // Populate Language from file
+			symbol.ContentHash = file.Hash    // Populate ContentHash from file
+			if symbol.Status == "" {
+				symbol.Status = model.StatusCompleted // Ensure status is set
+			}
 			if err := idx.db.SaveSymbol(symbol); err != nil { // Use idx.db directly
 				return fmt.Errorf("failed to save symbol %s in file %s: %w", symbol.Name, relPath, err)
 			}
@@ -417,52 +421,19 @@ func (idx *Indexer) scanFiles() ([]string, error) {
 	return files, err
 }
 
-// indexFiles indexes multiple files concurrently
+// indexFiles indexes multiple files synchronously
 func (idx *Indexer) indexFiles(files []string) error {
-	numWorkers := idx.config.WorkerCount
-	jobs := make(chan string, len(files))
-	errors := make(chan error, len(files))
-	var wg sync.WaitGroup
+	idx.logger.Info("Starting synchronous file indexing")
 
-	idx.logger.Infof("Starting %d workers for file indexing", numWorkers)
-
-	// Start workers
-	for w := 0; w < numWorkers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for filePath := range jobs {
-				idx.logger.Debugf("Worker %d indexing file: %s", w, filePath) // Log worker activity
-				if err := idx.IndexFile(filePath); err != nil {
-					errors <- fmt.Errorf("failed to index %s: %w", filePath, err)
-				}
-			}
-		}()
+	for _, filePath := range files {
+		if err := idx.IndexFile(filePath); err != nil {
+			idx.logger.Errorf("Failed to index %s: %v", filePath, err)
+			// Continue to next file, or return error if strict
+			// For now, we'll continue to process other files
+		}
 	}
 
-	// Send jobs
-	for _, file := range files {
-		jobs <- file
-	}
-	close(jobs)
-
-	// Wait for completion
-	wg.Wait()
-	close(errors)
-
-	// Collect errors
-	var errs []error
-	for err := range errors {
-		errs = append(errs, err)
-	}
-
-	if len(errs) > 0 {
-		idx.logger.Errorf("Encountered %d errors during file indexing", len(errs))
-		// Return first error (could be enhanced to return all)
-		return errs[0]
-	}
-
-	idx.logger.Info("All workers completed file indexing")
+	idx.logger.Info("Synchronous file indexing completed")
 	return nil
 }
 

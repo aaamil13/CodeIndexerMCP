@@ -8,8 +8,8 @@ import (
 	_ "embed"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
-	"github.com/aaamil13/CodeIndexerMCP/internal/utils" // Import the utils package for logger
-	_ "modernc.org/sqlite"
+	"github.com/aaamil13/CodeIndexerMCP/internal/utils"
+	// _ "github.com/mattn/go-sqlite3" // Use mattn/go-sqlite3 driver
 )
 
 //go:embed schema.sql
@@ -26,7 +26,7 @@ type Manager struct {
 }
 
 func NewManager(dbPath string, logger *utils.Logger) (*Manager, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite3", dbPath) // Change driver name to "sqlite3"
 	if err != nil {
 		return nil, err
 	}
@@ -126,19 +126,29 @@ func (m *Manager) SaveSymbol(symbol *model.Symbol) error {
 	query := `
         INSERT OR REPLACE INTO symbols (
             id, name, kind, file_path, language,
+            signature, documentation, visibility,
             start_line, start_column, start_byte,
             end_line, end_column, end_byte, content_hash, status, priority,
-            assigned_agent, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            assigned_agent, created_at, updated_at, metadata
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
 	
-	// Log the values being passed to db.Exec
+	toNullString := func(s string) sql.NullString {
+		if s == "" {
+			return sql.NullString{Valid: false}
+		}
+		return sql.NullString{String: s, Valid: true}
+	}
+
 	m.logger.Debug("Saving symbol to DB:",
 		"ID", symbol.ID,
 		"Name", symbol.Name,
 		"Kind", string(symbol.Kind),
 		"File", symbol.File,
 		"Language", symbol.Language,
+		"Signature", symbol.Signature,
+		"Documentation", symbol.Documentation,
+		"Visibility", string(symbol.Visibility),
 		"StartLine", symbol.Range.Start.Line,
 		"StartColumn", symbol.Range.Start.Column,
 		"StartByte", symbol.Range.Start.Byte,
@@ -151,14 +161,33 @@ func (m *Manager) SaveSymbol(symbol *model.Symbol) error {
 		"AssignedAgent", symbol.AssignedAgent,
 		"CreatedAt", symbol.CreatedAt.Format(time.RFC3339),
 		"UpdatedAt", symbol.UpdatedAt.Format(time.RFC3339),
+		"Metadata", symbol.Metadata,
 	)
+
+	var metadataNullString sql.NullString
+	if symbol.Metadata == nil || len(symbol.Metadata) == 0 {
+		metadataNullString = sql.NullString{Valid: false}
+	} else {
+		var marshalErr error
+		metadataJSON, marshalErr := json.Marshal(symbol.Metadata)
+		if marshalErr != nil {
+			return fmt.Errorf("failed to marshal metadata: %w", marshalErr)
+		}
+		metadataNullString = toNullString(string(metadataJSON))
+	}
 
 	_, err := m.db.Exec(query,
 		symbol.ID, symbol.Name, string(symbol.Kind), symbol.File, symbol.Language,
-		symbol.Range.Start.Line, symbol.Range.Start.Column, symbol.Range.Start.Byte,
-		symbol.Range.End.Line, symbol.Range.End.Column, symbol.Range.End.Byte,
-		symbol.ContentHash, string(symbol.Status), symbol.Priority, symbol.AssignedAgent,
-		symbol.CreatedAt.Format(time.RFC3339), symbol.UpdatedAt.Format(time.RFC3339),
+		toNullString(symbol.Signature),
+		toNullString(symbol.Documentation),
+		toNullString(string(symbol.Visibility)),
+		int64(symbol.Range.Start.Line), int64(symbol.Range.Start.Column), int64(symbol.Range.Start.Byte),
+		int64(symbol.Range.End.Line), int64(symbol.Range.End.Column), int64(symbol.Range.End.Byte),
+		symbol.ContentHash, string(symbol.Status), int64(symbol.Priority),
+		toNullString(symbol.AssignedAgent),
+		symbol.CreatedAt.Format(time.RFC3339),
+		symbol.UpdatedAt.Format(time.RFC3339),
+		metadataNullString,
 	)
 
 	return err

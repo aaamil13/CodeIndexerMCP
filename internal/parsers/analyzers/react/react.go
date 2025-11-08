@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 )
 
 // ReactAnalyzer analyzes React framework patterns
@@ -63,12 +63,12 @@ func (a *ReactAnalyzer) DetectFramework(content []byte, filePath string) bool {
 }
 
 // Analyze analyzes React-specific patterns
-func (a *ReactAnalyzer) Analyze(result *types.ParseResult, content []byte) (*types.FrameworkInfo, error) {
-	info := &types.FrameworkInfo{
+func (a *ReactAnalyzer) Analyze(result *model.ParseResult, content []byte) (*model.FrameworkInfo, error) {
+	info := &model.FrameworkInfo{
 		Name:         "react",
 		Type:         "frontend",
-		Components:   make([]*types.FrameworkComponent, 0),
-		Routes:       make([]*types.Route, 0),
+		Components:   make([]*model.FrameworkComponent, 0),
+		Routes:       make([]*model.Route, 0),
 		Dependencies: make([]string, 0),
 		Patterns:     make([]string, 0),
 		Warnings:     make([]string, 0),
@@ -97,7 +97,7 @@ func (a *ReactAnalyzer) Analyze(result *types.ParseResult, content []byte) (*typ
 	return info, nil
 }
 
-func (a *ReactAnalyzer) detectVersion(content string, info *types.FrameworkInfo) {
+func (a *ReactAnalyzer) detectVersion(content string, info *model.FrameworkInfo) {
 	// Simple version detection from imports
 	if strings.Contains(content, "import React") {
 		info.Version = "16.8+" // Assumes hooks are available
@@ -107,7 +107,7 @@ func (a *ReactAnalyzer) detectVersion(content string, info *types.FrameworkInfo)
 	}
 }
 
-func (a *ReactAnalyzer) extractComponents(result *types.ParseResult, content string, info *types.FrameworkInfo) {
+func (a *ReactAnalyzer) extractComponents(result *model.ParseResult, content string, info *model.FrameworkInfo) {
 	lines := strings.Split(content, "\n")
 
 	for i, line := range lines {
@@ -166,7 +166,7 @@ func (a *ReactAnalyzer) isClassComponent(line string) bool {
 			strings.Contains(line, "extends PureComponent"))
 }
 
-func (a *ReactAnalyzer) parseFunctionComponent(line string, lineNum int, content string) *types.FrameworkComponent {
+func (a *ReactAnalyzer) parseFunctionComponent(line string, lineNum int, content string) *model.FrameworkComponent {
 	// Extract component name
 	var name string
 	if strings.HasPrefix(line, "function ") {
@@ -186,10 +186,10 @@ func (a *ReactAnalyzer) parseFunctionComponent(line string, lineNum int, content
 		return nil
 	}
 
-	component := &types.FrameworkComponent{
+	component := &model.FrameworkComponent{
 		Type:       "function_component",
 		Name:       name,
-		Props:      make([]*types.ComponentProp, 0),
+		Props:      make([]*model.ComponentProp, 0),
 		Events:     make([]string, 0),
 		Lifecycle:  make([]string, 0),
 		Decorators: make([]string, 0),
@@ -210,7 +210,7 @@ func (a *ReactAnalyzer) parseFunctionComponent(line string, lineNum int, content
 	return component
 }
 
-func (a *ReactAnalyzer) parseClassComponent(line string, lineNum int, result *types.ParseResult) *types.FrameworkComponent {
+func (a *ReactAnalyzer) parseClassComponent(line string, lineNum int, result *model.ParseResult) *model.FrameworkComponent {
 	parts := strings.Fields(line)
 	var name string
 	for i, part := range parts {
@@ -224,10 +224,10 @@ func (a *ReactAnalyzer) parseClassComponent(line string, lineNum int, result *ty
 		return nil
 	}
 
-	component := &types.FrameworkComponent{
+	component := &model.FrameworkComponent{
 		Type:       "class_component",
 		Name:       name,
-		Props:      make([]*types.ComponentProp, 0),
+		Props:      make([]*model.ComponentProp, 0),
 		Events:     make([]string, 0),
 		Lifecycle:  make([]string, 0),
 		Decorators: make([]string, 0),
@@ -246,7 +246,7 @@ func (a *ReactAnalyzer) parseClassComponent(line string, lineNum int, result *ty
 
 	// Find which lifecycle methods are used
 	for _, symbol := range result.Symbols {
-		if symbol.Type == types.SymbolTypeMethod {
+		if symbol.Type == model.SymbolTypeMethod {
 			for _, method := range lifecycleMethods {
 				if symbol.Name == method {
 					component.Lifecycle = append(component.Lifecycle, method)
@@ -306,7 +306,7 @@ func (a *ReactAnalyzer) findHooksInComponent(componentName string, content strin
 	return hooks
 }
 
-func (a *ReactAnalyzer) detectHooks(content string, info *types.FrameworkInfo) {
+func (a *ReactAnalyzer) detectHooks(content string, info *model.FrameworkInfo) {
 	hooks := []string{
 		"useState", "useEffect", "useContext", "useReducer",
 		"useCallback", "useMemo", "useRef", "useLayoutEffect",
@@ -326,7 +326,7 @@ func (a *ReactAnalyzer) detectHooks(content string, info *types.FrameworkInfo) {
 	}
 }
 
-func (a *ReactAnalyzer) detectRoutes(content string, info *types.FrameworkInfo) {
+func (a *ReactAnalyzer) detectRoutes(content string, info *model.FrameworkInfo) {
 	// Detect React Router usage
 	if !strings.Contains(content, "react-router") &&
 		!strings.Contains(content, "Route") {
@@ -339,7 +339,7 @@ func (a *ReactAnalyzer) detectRoutes(content string, info *types.FrameworkInfo) 
 
 	for _, match := range matches {
 		if len(match) >= 2 {
-			route := &types.Route{
+			route := &model.Route{
 				Path:   match[1],
 				Method: "GET", // HTTP method not applicable for client-side routing
 			}
@@ -356,7 +356,7 @@ func (a *ReactAnalyzer) detectRoutes(content string, info *types.FrameworkInfo) 
 	}
 }
 
-func (a *ReactAnalyzer) detectPatterns(content string, info *types.FrameworkInfo) {
+func (a *ReactAnalyzer) detectPatterns(content string, info *model.FrameworkInfo) {
 	// Context API
 	if strings.Contains(content, "createContext") || strings.Contains(content, "useContext") {
 		info.Patterns = append(info.Patterns, "Context API")
@@ -388,7 +388,7 @@ func (a *ReactAnalyzer) detectPatterns(content string, info *types.FrameworkInfo
 	}
 }
 
-func (a *ReactAnalyzer) checkIssues(content string, info *types.FrameworkInfo) {
+func (a *ReactAnalyzer) checkIssues(content string, info *model.FrameworkInfo) {
 	// Check for common anti-patterns
 
 	// Missing key in lists

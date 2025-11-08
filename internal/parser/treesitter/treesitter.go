@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 )
 
 // TreeSitterParser is a generic parser using Tree-sitter
@@ -48,7 +48,7 @@ func (p *TreeSitterParser) SupportsFramework(framework string) bool {
 }
 
 // Parse parses file content using Tree-sitter
-func (p *TreeSitterParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
+func (p *TreeSitterParser) Parse(content []byte, filePath string) (*model.ParseResult, error) {
 	// This is a placeholder for actual Tree-sitter integration
 	// Real implementation would:
 	// 1. Parse with tree-sitter
@@ -196,7 +196,7 @@ func getDefaultQueries(language string) []string {
 }
 
 // Extract extracts symbols from parse tree (placeholder)
-func (se *SymbolExtractor) Extract(tree interface{}) ([]*types.Symbol, error) {
+func (se *SymbolExtractor) Extract(tree interface{}) ([]*model.Symbol, error) {
 	// This would walk the tree-sitter parse tree and extract symbols
 	// using the configured queries
 	return nil, fmt.Errorf("not implemented")

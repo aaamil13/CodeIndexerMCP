@@ -9,7 +9,7 @@ import (
 	"github.com/aaamil13/CodeIndexerMCP/internal/ai"
 	"github.com/aaamil13/CodeIndexerMCP/internal/core"
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 )
 
 // Server implements a Language Server Protocol server
@@ -431,7 +431,7 @@ func (s *Server) handleWorkspaceSymbol(msg *Message) (interface{}, error) {
 	}
 
 	// Search symbols
-	symbols, err := s.db.SearchSymbols(types.SearchOptions{
+	symbols, err := s.db.SearchSymbols(model.SearchOptions{
 		Query: params.Query,
 		Limit: 50,
 	})
@@ -639,7 +639,7 @@ func (s *Server) indexWorkspace(uri string) {
 		return
 	}
 	if project == nil {
-		project = &types.Project{
+		project = &model.Project{
 			Path: path,
 			Name: path, // Use path as name for now
 		}
@@ -659,7 +659,7 @@ func (s *Server) indexDocument(uri string, content []byte) {
 	s.indexer.IndexFile(path)
 }
 
-func (s *Server) getSymbolAtPosition(uri string, pos Position) (*types.Symbol, error) {
+func (s *Server) getSymbolAtPosition(uri string, pos Position) (*model.Symbol, error) {
 	fileID, err := s.getFileIDFromURI(uri)
 	if err != nil {
 		return nil, err
@@ -680,7 +680,7 @@ func (s *Server) getSymbolAtPosition(uri string, pos Position) (*types.Symbol, e
 	return nil, nil
 }
 
-func (s *Server) getSymbolsInScope(uri string, pos Position) ([]*types.Symbol, error) {
+func (s *Server) getSymbolsInScope(uri string, pos Position) ([]*model.Symbol, error) {
 	fileID, err := s.getFileIDFromURI(uri)
 	if err != nil {
 		return nil, err

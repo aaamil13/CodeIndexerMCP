@@ -3,7 +3,7 @@ package golang
 import (
 	"testing"
 
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 )
 
 func TestParseFunction(t *testing.T) {
@@ -30,7 +30,7 @@ func Add(a, b int) int {
 	if sym.Name != "Add" {
 		t.Errorf("Expected name 'Add', got '%s'", sym.Name)
 	}
-	if sym.Type != types.SymbolTypeFunction {
+	if sym.Type != model.SymbolTypeFunction {
 		t.Errorf("Expected type function, got %s", sym.Type)
 	}
 	if sym.Signature != "func Add(a, b int) int" {
@@ -67,7 +67,7 @@ type User struct {
 	if sym.Name != "User" {
 		t.Errorf("Expected name 'User', got '%s'", sym.Name)
 	}
-	if sym.Type != types.SymbolTypeStruct {
+	if sym.Type != model.SymbolTypeStruct {
 		t.Errorf("Expected type struct, got %s", sym.Type)
 	}
 	if sym.Documentation != "User represents a user" {
@@ -98,7 +98,7 @@ type Writer interface {
 	if sym.Name != "Writer" {
 		t.Errorf("Expected name 'Writer', got '%s'", sym.Name)
 	}
-	if sym.Type != types.SymbolTypeInterface {
+	if sym.Type != model.SymbolTypeInterface {
 		t.Errorf("Expected type interface, got %s", sym.Type)
 	}
 }
@@ -125,9 +125,9 @@ func (c *Calculator) Calculate(x, y int) int {
 	}
 
 	// Find the method
-	var method *types.Symbol
+	var method *model.Symbol
 	for _, sym := range result.Symbols {
-		if sym.Type == types.SymbolTypeMethod {
+		if sym.Type == model.SymbolTypeMethod {
 			method = sym
 			break
 		}
@@ -200,7 +200,7 @@ const (
 	}
 
 	for _, sym := range result.Symbols {
-		if sym.Type != types.SymbolTypeConstant {
+		if sym.Type != model.SymbolTypeConstant {
 			t.Errorf("Expected type constant, got %s", sym.Type)
 		}
 	}
@@ -225,7 +225,7 @@ var (
 	}
 
 	for _, sym := range result.Symbols {
-		if sym.Type != types.SymbolTypeVariable {
+		if sym.Type != model.SymbolTypeVariable {
 			t.Errorf("Expected type variable, got %s", sym.Type)
 		}
 	}

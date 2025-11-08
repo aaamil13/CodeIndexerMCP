@@ -2,39 +2,39 @@ package lsp
 
 import (
 	"fmt"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 )
 
 // symbolTypeToSymbolKind converts internal symbol type to LSP SymbolKind
-func symbolTypeToSymbolKind(symbolType types.SymbolType) SymbolKind {
+func symbolTypeToSymbolKind(symbolType model.SymbolType) SymbolKind {
 	switch symbolType {
-	case types.SymbolTypeFunction:
+	case model.SymbolTypeFunction:
 		return SymbolKindFunction
-	case types.SymbolTypeMethod:
+	case model.SymbolTypeMethod:
 		return SymbolKindMethod
-	case types.SymbolTypeClass:
+	case model.SymbolTypeClass:
 		return SymbolKindClass
-	case types.SymbolTypeInterface:
+	case model.SymbolTypeInterface:
 		return SymbolKindInterface
-	case types.SymbolTypeVariable:
+	case model.SymbolTypeVariable:
 		return SymbolKindVariable
-	case types.SymbolTypeConstant:
+	case model.SymbolTypeConstant:
 		return SymbolKindConstant
-	case types.SymbolTypeStruct:
+	case model.SymbolTypeStruct:
 		return SymbolKindStruct
-	case types.SymbolTypeEnum:
+	case model.SymbolTypeEnum:
 		return SymbolKindEnum
-	case types.SymbolTypeConstructor:
+	case model.SymbolTypeConstructor:
 		return SymbolKindConstructor
-	case types.SymbolTypeField:
+	case model.SymbolTypeField:
 		return SymbolKindField
-	case types.SymbolTypeProperty:
+	case model.SymbolTypeProperty:
 		return SymbolKindProperty
-	case types.SymbolTypeModule:
+	case model.SymbolTypeModule:
 		return SymbolKindModule
-	case types.SymbolTypeNamespace:
+	case model.SymbolTypeNamespace:
 		return SymbolKindNamespace
-	case types.SymbolTypePackage:
+	case model.SymbolTypePackage:
 		return SymbolKindPackage
 	default:
 		return SymbolKindVariable
@@ -42,31 +42,31 @@ func symbolTypeToSymbolKind(symbolType types.SymbolType) SymbolKind {
 }
 
 // symbolTypeToCompletionKind converts internal symbol type to LSP CompletionItemKind
-func symbolTypeToCompletionKind(symbolType types.SymbolType) CompletionItemKind {
+func symbolTypeToCompletionKind(symbolType model.SymbolType) CompletionItemKind {
 	switch symbolType {
-	case types.SymbolTypeFunction:
+	case model.SymbolTypeFunction:
 		return CompletionItemKindFunction
-	case types.SymbolTypeMethod:
+	case model.SymbolTypeMethod:
 		return CompletionItemKindMethod
-	case types.SymbolTypeClass:
+	case model.SymbolTypeClass:
 		return CompletionItemKindClass
-	case types.SymbolTypeInterface:
+	case model.SymbolTypeInterface:
 		return CompletionItemKindInterface
-	case types.SymbolTypeVariable:
+	case model.SymbolTypeVariable:
 		return CompletionItemKindVariable
-	case types.SymbolTypeConstant:
+	case model.SymbolTypeConstant:
 		return CompletionItemKindConstant
-	case types.SymbolTypeStruct:
+	case model.SymbolTypeStruct:
 		return CompletionItemKindStruct
-	case types.SymbolTypeEnum:
+	case model.SymbolTypeEnum:
 		return CompletionItemKindEnum
-	case types.SymbolTypeConstructor:
+	case model.SymbolTypeConstructor:
 		return CompletionItemKindConstructor
-	case types.SymbolTypeField:
+	case model.SymbolTypeField:
 		return CompletionItemKindField
-	case types.SymbolTypeProperty:
+	case model.SymbolTypeProperty:
 		return CompletionItemKindProperty
-	case types.SymbolTypeModule:
+	case model.SymbolTypeModule:
 		return CompletionItemKindModule
 	default:
 		return CompletionItemKindText
@@ -90,7 +90,7 @@ func severityToDiagnosticSeverity(severity string) DiagnosticSeverity {
 }
 
 // createDiagnosticFromUndefinedUsage creates an LSP diagnostic from undefined usage
-func createDiagnosticFromUndefinedUsage(usage *types.UndefinedUsage) Diagnostic {
+func createDiagnosticFromUndefinedUsage(usage *model.UndefinedUsage) Diagnostic {
 	return Diagnostic{
 		Range: Range{
 			Start: Position{Line: usage.Line - 1, Character: usage.Column},
@@ -103,7 +103,7 @@ func createDiagnosticFromUndefinedUsage(usage *types.UndefinedUsage) Diagnostic 
 }
 
 // createDiagnosticFromTypeMismatch creates an LSP diagnostic from type mismatch
-func createDiagnosticFromTypeMismatch(mismatch *types.TypeMismatch) Diagnostic {
+func createDiagnosticFromTypeMismatch(mismatch *model.TypeMismatch) Diagnostic {
 	message := fmt.Sprintf("Type mismatch: expected %s, got %s",
 		mismatch.ExpectedType, mismatch.ActualType)
 
@@ -119,7 +119,7 @@ func createDiagnosticFromTypeMismatch(mismatch *types.TypeMismatch) Diagnostic {
 }
 
 // createDiagnosticFromMissingMethod creates an LSP diagnostic from missing method
-func createDiagnosticFromMissingMethod(missing *types.MissingMethod) Diagnostic {
+func createDiagnosticFromMissingMethod(missing *model.MissingMethod) Diagnostic {
 	message := fmt.Sprintf("Method '%s' not found on type '%s'",
 		missing.MethodName, missing.TypeName)
 

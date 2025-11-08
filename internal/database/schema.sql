@@ -25,9 +25,8 @@ CREATE TABLE IF NOT EXISTS symbols (
     priority INTEGER DEFAULT 0,
     assigned_agent TEXT,
     
-    -- Timestamps
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
     
     -- JSON метаданни
     metadata TEXT

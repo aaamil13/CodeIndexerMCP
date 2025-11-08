@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 )
 
 // FlaskAnalyzer analyzes Flask framework patterns
@@ -52,12 +52,12 @@ func (a *FlaskAnalyzer) DetectFramework(content []byte, filePath string) bool {
 }
 
 // Analyze analyzes Flask-specific patterns
-func (a *FlaskAnalyzer) Analyze(result *types.ParseResult, content []byte) (*types.FrameworkInfo, error) {
-	info := &types.FrameworkInfo{
+func (a *FlaskAnalyzer) Analyze(result *model.ParseResult, content []byte) (*model.FrameworkInfo, error) {
+	info := &model.FrameworkInfo{
 		Name:         "flask",
 		Type:         "backend",
-		Components:   make([]*types.FrameworkComponent, 0),
-		Routes:       make([]*types.Route, 0),
+		Components:   make([]*model.FrameworkComponent, 0),
+		Routes:       make([]*model.Route, 0),
 		Dependencies: make([]string, 0),
 		Patterns:     make([]string, 0),
 		Warnings:     make([]string, 0),
@@ -92,7 +92,7 @@ func (a *FlaskAnalyzer) Analyze(result *types.ParseResult, content []byte) (*typ
 	return info, nil
 }
 
-func (a *FlaskAnalyzer) extractRoutes(result *types.ParseResult, content string, info *types.FrameworkInfo) {
+func (a *FlaskAnalyzer) extractRoutes(result *model.ParseResult, content string, info *model.FrameworkInfo) {
 	lines := strings.Split(content, "\n")
 
 	for i := 0; i < len(lines); i++ {
@@ -108,11 +108,11 @@ func (a *FlaskAnalyzer) extractRoutes(result *types.ParseResult, content string,
 	}
 }
 
-func (a *FlaskAnalyzer) parseRoute(decoratorLine string, lines []string, lineIndex int, result *types.ParseResult) *types.Route {
-	route := &types.Route{
+func (a *FlaskAnalyzer) parseRoute(decoratorLine string, lines []string, lineIndex int, result *model.ParseResult) *model.Route {
+	route := &model.Route{
 		Method:     "GET", // Default
 		Middleware: make([]string, 0),
-		Parameters: make([]*types.RouteParameter, 0),
+		Parameters: make([]*model.RouteParameter, 0),
 	}
 
 	// Extract path: @app.route('/path')
@@ -155,15 +155,15 @@ func (a *FlaskAnalyzer) parseRoute(decoratorLine string, lines []string, lineInd
 	return route
 }
 
-func (a *FlaskAnalyzer) extractRouteParameters(path string) []*types.RouteParameter {
-	params := make([]*types.RouteParameter, 0)
+func (a *FlaskAnalyzer) extractRouteParameters(path string) []*model.RouteParameter {
+	params := make([]*model.RouteParameter, 0)
 
 	// Find <param> or <type:param> patterns
 	paramRe := regexp.MustCompile(`<(?:(\w+):)?(\w+)>`)
 	matches := paramRe.FindAllStringSubmatch(path, -1)
 
 	for _, match := range matches {
-		param := &types.RouteParameter{
+		param := &model.RouteParameter{
 			Type:     "path",
 			Required: true,
 		}
@@ -183,7 +183,7 @@ func (a *FlaskAnalyzer) extractRouteParameters(path string) []*types.RouteParame
 	return params
 }
 
-func (a *FlaskAnalyzer) detectBlueprints(content string, info *types.FrameworkInfo) {
+func (a *FlaskAnalyzer) detectBlueprints(content string, info *model.FrameworkInfo) {
 	// Find Blueprint definitions
 	blueprintRe := regexp.MustCompile(`(\w+)\s*=\s*Blueprint\s*\(`)
 	matches := blueprintRe.FindAllStringSubmatch(content, -1)
@@ -192,7 +192,7 @@ func (a *FlaskAnalyzer) detectBlueprints(content string, info *types.FrameworkIn
 		info.Patterns = append(info.Patterns, "Flask Blueprints")
 		for _, match := range matches {
 			if len(match) >= 2 {
-				component := &types.FrameworkComponent{
+				component := &model.FrameworkComponent{
 					Type:     "blueprint",
 					Name:     match[1],
 					Metadata: make(map[string]interface{}),
@@ -203,7 +203,7 @@ func (a *FlaskAnalyzer) detectBlueprints(content string, info *types.FrameworkIn
 	}
 }
 
-func (a *FlaskAnalyzer) detectExtensions(content string, info *types.FrameworkInfo) {
+func (a *FlaskAnalyzer) detectExtensions(content string, info *model.FrameworkInfo) {
 	extensions := map[string]string{
 		"flask_login":       "Flask-Login (Authentication)",
 		"flask_wtf":         "Flask-WTF (Forms)",
@@ -222,13 +222,13 @@ func (a *FlaskAnalyzer) detectExtensions(content string, info *types.FrameworkIn
 	}
 }
 
-func (a *FlaskAnalyzer) extractRESTfulResources(result *types.ParseResult, content string, info *types.FrameworkInfo) {
+func (a *FlaskAnalyzer) extractRESTfulResources(result *model.ParseResult, content string, info *model.FrameworkInfo) {
 	// Find classes that inherit from Resource
 	for _, symbol := range result.Symbols {
-		if symbol.Type == types.SymbolTypeClass {
+		if symbol.Type == model.SymbolTypeClass {
 			if strings.Contains(content, "class "+symbol.Name) &&
 				strings.Contains(content, "Resource") {
-				component := &types.FrameworkComponent{
+				component := &model.FrameworkComponent{
 					Type:     "resource",
 					Name:     symbol.Name,
 					Symbol:   symbol,
@@ -238,7 +238,7 @@ func (a *FlaskAnalyzer) extractRESTfulResources(result *types.ParseResult, conte
 				// Find HTTP methods (get, post, put, delete, etc.)
 				methods := []string{}
 				for _, methodSymbol := range result.Symbols {
-					if methodSymbol.Type == types.SymbolTypeMethod {
+					if methodSymbol.Type == model.SymbolTypeMethod {
 						httpMethods := []string{"get", "post", "put", "delete", "patch"}
 						for _, httpMethod := range httpMethods {
 							if methodSymbol.Name == httpMethod {
@@ -255,15 +255,15 @@ func (a *FlaskAnalyzer) extractRESTfulResources(result *types.ParseResult, conte
 	}
 }
 
-func (a *FlaskAnalyzer) extractModels(result *types.ParseResult, content string, info *types.FrameworkInfo) {
+func (a *FlaskAnalyzer) extractModels(result *model.ParseResult, content string, info *model.FrameworkInfo) {
 	// Find classes that inherit from db.Model
 	for _, symbol := range result.Symbols {
-		if symbol.Type == types.SymbolTypeClass {
+		if symbol.Type == model.SymbolTypeClass {
 			if a.isModelClass(symbol.Name, content) {
-				model := &types.Model{
+				model := &model.Model{
 					Name:   symbol.Name,
 					Symbol: symbol,
-					Fields: make([]*types.ModelField, 0),
+					Fields: make([]*model.ModelField, 0),
 				}
 
 				// Extract fields (simplified)
@@ -282,7 +282,7 @@ func (a *FlaskAnalyzer) extractModels(result *types.ParseResult, content string,
 						// Extract field
 						if parts := strings.Split(trimmed, "="); len(parts) >= 1 {
 							fieldName := strings.TrimSpace(parts[0])
-							field := &types.ModelField{
+							field := &model.ModelField{
 								Name: fieldName,
 							}
 
@@ -329,7 +329,7 @@ func (a *FlaskAnalyzer) isModelClass(className string, content string) bool {
 	return false
 }
 
-func (a *FlaskAnalyzer) checkIssues(content string, info *types.FrameworkInfo) {
+func (a *FlaskAnalyzer) checkIssues(content string, info *model.FrameworkInfo) {
 	// Check for debug mode in production
 	if strings.Contains(content, "app.run(debug=True)") {
 		info.Warnings = append(info.Warnings, "Debug mode enabled - should be disabled in production")

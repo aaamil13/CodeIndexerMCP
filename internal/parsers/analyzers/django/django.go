@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 )
 
 // DjangoAnalyzer analyzes Django framework patterns
@@ -57,13 +57,13 @@ func (a *DjangoAnalyzer) DetectFramework(content []byte, filePath string) bool {
 }
 
 // Analyze analyzes Django-specific patterns
-func (a *DjangoAnalyzer) Analyze(result *types.ParseResult, content []byte) (*types.FrameworkInfo, error) {
-	info := &types.FrameworkInfo{
+func (a *DjangoAnalyzer) Analyze(result *model.ParseResult, content []byte) (*model.FrameworkInfo, error) {
+	info := &model.FrameworkInfo{
 		Name:         "django",
 		Type:         "backend",
-		Components:   make([]*types.FrameworkComponent, 0),
-		Routes:       make([]*types.Route, 0),
-		Models:       make([]*types.Model, 0),
+		Components:   make([]*model.FrameworkComponent, 0),
+		Routes:       make([]*model.Route, 0),
+		Models:       make([]*model.Model, 0),
 		Dependencies: make([]string, 0),
 		Patterns:     make([]string, 0),
 		Warnings:     make([]string, 0),
@@ -101,7 +101,7 @@ func (a *DjangoAnalyzer) Analyze(result *types.ParseResult, content []byte) (*ty
 	return info, nil
 }
 
-func (a *DjangoAnalyzer) detectVersion(content string, info *types.FrameworkInfo) {
+func (a *DjangoAnalyzer) detectVersion(content string, info *model.FrameworkInfo) {
 	// Detection based on imports and patterns
 	if strings.Contains(content, "from django.urls import path") {
 		info.Version = "2.0+" // path() was introduced in Django 2.0
@@ -115,10 +115,10 @@ func (a *DjangoAnalyzer) detectVersion(content string, info *types.FrameworkInfo
 	}
 }
 
-func (a *DjangoAnalyzer) extractModels(result *types.ParseResult, content string, info *types.FrameworkInfo) {
+func (a *DjangoAnalyzer) extractModels(result *model.ParseResult, content string, info *model.FrameworkInfo) {
 	// Find classes that inherit from models.Model
 	for _, symbol := range result.Symbols {
-		if symbol.Type != types.SymbolTypeClass {
+		if symbol.Type != model.SymbolTypeClass {
 			continue
 		}
 
@@ -149,14 +149,14 @@ func (a *DjangoAnalyzer) isModelClass(className string, content string) bool {
 	return false
 }
 
-func (a *DjangoAnalyzer) parseModel(symbol *types.Symbol, content string) *types.Model {
-	model := &types.Model{
+func (a *DjangoAnalyzer) parseModel(symbol *model.Symbol, content string) *model.Model {
+	model := &model.Model{
 		Name:        symbol.Name,
 		Symbol:      symbol,
-		Fields:      make([]*types.ModelField, 0),
-		Relations:   make([]*types.ModelRelation, 0),
+		Fields:      make([]*model.ModelField, 0),
+		Relations:   make([]*model.ModelRelation, 0),
 		Indexes:     make([]string, 0),
-		Validations: make([]*types.ModelValidation, 0),
+		Validations: make([]*model.ModelValidation, 0),
 	}
 
 	// Extract table name from Meta class
@@ -231,7 +231,7 @@ func (a *DjangoAnalyzer) isFieldDefinition(line string) bool {
 	return false
 }
 
-func (a *DjangoAnalyzer) parseField(line string) *types.ModelField {
+func (a *DjangoAnalyzer) parseField(line string) *model.ModelField {
 	// Extract: field_name = models.FieldType(...)
 	parts := strings.Split(line, "=")
 	if len(parts) < 2 {
@@ -241,7 +241,7 @@ func (a *DjangoAnalyzer) parseField(line string) *types.ModelField {
 	fieldName := strings.TrimSpace(parts[0])
 	fieldDef := strings.TrimSpace(parts[1])
 
-	field := &types.ModelField{
+	field := &model.ModelField{
 		Name: fieldName,
 	}
 
@@ -280,7 +280,7 @@ func (a *DjangoAnalyzer) parseField(line string) *types.ModelField {
 	return field
 }
 
-func (a *DjangoAnalyzer) parseRelation(line string) *types.ModelRelation {
+func (a *DjangoAnalyzer) parseRelation(line string) *model.ModelRelation {
 	relationTypes := map[string]string{
 		"ForeignKey":     "belongs_to",
 		"OneToOneField":  "has_one",
@@ -289,7 +289,7 @@ func (a *DjangoAnalyzer) parseRelation(line string) *types.ModelRelation {
 
 	for fieldType, relationType := range relationTypes {
 		if strings.Contains(line, "models."+fieldType) {
-			relation := &types.ModelRelation{
+			relation := &model.ModelRelation{
 				Type: relationType,
 			}
 
@@ -306,19 +306,19 @@ func (a *DjangoAnalyzer) parseRelation(line string) *types.ModelRelation {
 	return nil
 }
 
-func (a *DjangoAnalyzer) extractViews(result *types.ParseResult, content string, info *types.FrameworkInfo) {
+func (a *DjangoAnalyzer) extractViews(result *model.ParseResult, content string, info *model.FrameworkInfo) {
 	viewTypes := []string{
 		"View", "TemplateView", "ListView", "DetailView",
 		"CreateView", "UpdateView", "DeleteView", "FormView",
 	}
 
 	for _, symbol := range result.Symbols {
-		if symbol.Type == types.SymbolTypeClass {
+		if symbol.Type == model.SymbolTypeClass {
 			// Check if it's a view class
 			for _, viewType := range viewTypes {
 				if strings.Contains(content, "class "+symbol.Name) &&
 					strings.Contains(content, viewType) {
-					component := &types.FrameworkComponent{
+					component := &model.FrameworkComponent{
 						Type:     "view",
 						Name:     symbol.Name,
 						Symbol:   symbol,
@@ -332,10 +332,10 @@ func (a *DjangoAnalyzer) extractViews(result *types.ParseResult, content string,
 		}
 
 		// Function-based views
-		if symbol.Type == types.SymbolTypeFunction {
+		if symbol.Type == model.SymbolTypeFunction {
 			// Check if function has request parameter
 			if strings.Contains(symbol.Signature, "request") {
-				component := &types.FrameworkComponent{
+				component := &model.FrameworkComponent{
 					Type:     "view",
 					Name:     symbol.Name,
 					Symbol:   symbol,
@@ -348,14 +348,14 @@ func (a *DjangoAnalyzer) extractViews(result *types.ParseResult, content string,
 	}
 }
 
-func (a *DjangoAnalyzer) extractURLPatterns(content string, info *types.FrameworkInfo) {
+func (a *DjangoAnalyzer) extractURLPatterns(content string, info *model.FrameworkInfo) {
 	// Find: path('route/', view, name='name')
 	pathRe := regexp.MustCompile(`path\s*\(\s*["']([^"']+)["']\s*,\s*([^,]+)`)
 	matches := pathRe.FindAllStringSubmatch(content, -1)
 
 	for _, match := range matches {
 		if len(match) >= 3 {
-			route := &types.Route{
+			route := &model.Route{
 				Path:    match[1],
 				Handler: strings.TrimSpace(match[2]),
 			}
@@ -371,11 +371,11 @@ func (a *DjangoAnalyzer) extractURLPatterns(content string, info *types.Framewor
 	}
 }
 
-func (a *DjangoAnalyzer) extractSerializers(result *types.ParseResult, content string, info *types.FrameworkInfo) {
+func (a *DjangoAnalyzer) extractSerializers(result *model.ParseResult, content string, info *model.FrameworkInfo) {
 	for _, symbol := range result.Symbols {
-		if symbol.Type == types.SymbolTypeClass {
+		if symbol.Type == model.SymbolTypeClass {
 			if strings.Contains(content, "Serializer") {
-				component := &types.FrameworkComponent{
+				component := &model.FrameworkComponent{
 					Type:     "serializer",
 					Name:     symbol.Name,
 					Symbol:   symbol,
@@ -387,12 +387,12 @@ func (a *DjangoAnalyzer) extractSerializers(result *types.ParseResult, content s
 	}
 }
 
-func (a *DjangoAnalyzer) extractForms(result *types.ParseResult, content string, info *types.FrameworkInfo) {
+func (a *DjangoAnalyzer) extractForms(result *model.ParseResult, content string, info *model.FrameworkInfo) {
 	for _, symbol := range result.Symbols {
-		if symbol.Type == types.SymbolTypeClass {
+		if symbol.Type == model.SymbolTypeClass {
 			if strings.Contains(content, "forms.Form") ||
 				strings.Contains(content, "forms.ModelForm") {
-				component := &types.FrameworkComponent{
+				component := &model.FrameworkComponent{
 					Type:     "form",
 					Name:     symbol.Name,
 					Symbol:   symbol,
@@ -404,14 +404,14 @@ func (a *DjangoAnalyzer) extractForms(result *types.ParseResult, content string,
 	}
 }
 
-func (a *DjangoAnalyzer) detectAdmin(content string, info *types.FrameworkInfo) {
+func (a *DjangoAnalyzer) detectAdmin(content string, info *model.FrameworkInfo) {
 	if strings.Contains(content, "admin.site.register") ||
 		strings.Contains(content, "admin.ModelAdmin") {
 		info.Patterns = append(info.Patterns, "Django Admin customization")
 	}
 }
 
-func (a *DjangoAnalyzer) checkIssues(content string, info *types.FrameworkInfo) {
+func (a *DjangoAnalyzer) checkIssues(content string, info *model.FrameworkInfo) {
 	// Check for common Django anti-patterns
 
 	// Raw SQL usage
