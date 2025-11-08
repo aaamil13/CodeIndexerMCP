@@ -5,75 +5,69 @@ import (
 	"strings"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 )
 
 // UsageAnalyzer analyzes symbol usage patterns
 type UsageAnalyzer struct {
-	db *database.DB
+	db *database.Manager
 }
 
 // NewUsageAnalyzer creates a new usage analyzer
-func NewUsageAnalyzer(db *database.DB) *UsageAnalyzer {
+func NewUsageAnalyzer(db *database.Manager) *UsageAnalyzer {
 	return &UsageAnalyzer{db: db}
 }
 
 // AnalyzeUsage analyzes usage statistics for a symbol
-func (ua *UsageAnalyzer) AnalyzeUsage(symbolName string) (*types.SymbolUsageStats, error) {
-	// Get the symbol
-	symbol, err := ua.db.GetSymbolByName(symbolName)
-	if err != nil {
-		return nil, err
-	}
-	if symbol == nil {
-		return nil, fmt.Errorf("symbol not found: %s", symbolName)
-	}
+func (ua *UsageAnalyzer) AnalyzeUsage(symbol *model.Symbol) (*SymbolUsageStats, error) {
+	// TODO: Implement after DB methods are available
+	// // Get the symbol
+	// if symbol == nil {
+	// 	return nil, fmt.Errorf("symbol cannot be nil")
+	// }
 
-	// Get all references
-	references, err := ua.db.GetReferencesBySymbol(symbol.ID)
-	if err != nil {
-		return nil, err
-	}
+	// // Get all references
+	// references, err := ua.db.GetReferencesBySymbol(symbol.ID)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	usageCount := len(references)
+	// usageCount := len(references)
 
-	// Group by file
-	usageByFile := make(map[string]int)
-	fileSet := make(map[int64]bool)
+	// // Group by file
+	// usageByFile := make(map[string]int)
+	// fileSet := make(map[string]bool)
 
-	for _, ref := range references {
-		fileSet[ref.FileID] = true
+	// for _, ref := range references {
+	// 	fileSet[ref.FilePath] = true
+	// 	usageByFile[ref.FilePath]++
+	// }
 
-		// Get file for path
-		if file, err := ua.db.GetFile(ref.FileID); err == nil {
-			usageByFile[file.RelativePath]++
-		}
-	}
+	// fileCount := len(fileSet)
 
-	fileCount := len(fileSet)
+	// // Detect common usage patterns
+	// commonPatterns := ua.detectUsagePatterns(symbol, references)
 
-	// Detect common usage patterns
-	commonPatterns := ua.detectUsagePatterns(symbol, references)
+	// // Check if deprecated
+	// isDeprecated := ua.isDeprecated(symbol)
 
-	// Check if deprecated
-	isDeprecated := ua.isDeprecated(symbol)
+	// // Find alternatives
+	// alternatives := ua.findAlternatives(symbol)
 
-	// Find alternatives
-	alternatives := ua.findAlternatives(symbol)
-
-	return &types.SymbolUsageStats{
-		Symbol:         symbol,
-		UsageCount:     usageCount,
-		FileCount:      fileCount,
-		UsageByFile:    usageByFile,
-		CommonPatterns: commonPatterns,
-		IsDeprecated:   isDeprecated,
-		Alternatives:   alternatives,
-	}, nil
+	// return &SymbolUsageStats{
+	// 	Symbol:         symbol,
+	// 	UsageCount:     usageCount,
+	// 	FileCount:      fileCount,
+	// 	UsageByFile:    usageByFile,
+	// 	CommonPatterns: commonPatterns,
+	// 	IsDeprecated:   isDeprecated,
+	// 	Alternatives:   alternatives,
+	// }, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // detectUsagePatterns detects common usage patterns
-func (ua *UsageAnalyzer) detectUsagePatterns(symbol *types.Symbol, references []*types.Reference) []string {
+func (ua *UsageAnalyzer) detectUsagePatterns(symbol *model.Symbol, references []*model.Reference) []string {
 	patterns := []string{}
 
 	// Count reference types
@@ -83,11 +77,11 @@ func (ua *UsageAnalyzer) detectUsagePatterns(symbol *types.Symbol, references []
 
 	for _, ref := range references {
 		switch ref.ReferenceType {
-		case "call":
+		case "calls": // Use "calls" from model.Reference
 			callCount++
-		case "assignment":
+		case "assignment": // Assuming "assignment" is a valid type
 			assignmentCount++
-		case "type_reference":
+		case "type_reference": // Assuming "type_reference" is a valid type
 			typeRefCount++
 		}
 	}
@@ -109,9 +103,9 @@ func (ua *UsageAnalyzer) detectUsagePatterns(symbol *types.Symbol, references []
 	}
 
 	// Pattern: concentrated usage
-	usageByFile := make(map[int64]int)
+	usageByFile := make(map[string]int)
 	for _, ref := range references {
-		usageByFile[ref.FileID]++
+		usageByFile[ref.FilePath]++
 	}
 
 	maxUsageInFile := 0
@@ -134,7 +128,7 @@ func (ua *UsageAnalyzer) detectUsagePatterns(symbol *types.Symbol, references []
 }
 
 // isDeprecated checks if a symbol is deprecated
-func (ua *UsageAnalyzer) isDeprecated(symbol *types.Symbol) bool {
+func (ua *UsageAnalyzer) isDeprecated(symbol *model.Symbol) bool {
 	// Check documentation for deprecation markers
 	doc := strings.ToLower(symbol.Documentation)
 	return strings.Contains(doc, "deprecated") ||
@@ -143,7 +137,7 @@ func (ua *UsageAnalyzer) isDeprecated(symbol *types.Symbol) bool {
 }
 
 // findAlternatives finds alternative symbols
-func (ua *UsageAnalyzer) findAlternatives(symbol *types.Symbol) []string {
+func (ua *UsageAnalyzer) findAlternatives(symbol *model.Symbol) []string {
 	alternatives := []string{}
 
 	// If deprecated, look for alternatives in documentation
@@ -166,115 +160,120 @@ func (ua *UsageAnalyzer) findAlternatives(symbol *types.Symbol) []string {
 }
 
 // FindUnusedSymbols finds symbols that are never used
-func (ua *UsageAnalyzer) FindUnusedSymbols(projectID int64) ([]*types.Symbol, error) {
-	// Get all files for project
-	files, err := ua.db.GetAllFilesForProject(projectID)
-	if err != nil {
-		return nil, err
-	}
+func (ua *UsageAnalyzer) FindUnusedSymbols(projectID string) ([]*model.Symbol, error) {
+	// TODO: Implement after DB methods are available
+	// // Get all files for project
+	// files, err := ua.db.GetAllFilesForProject(projectID)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	unusedSymbols := []*types.Symbol{}
+	// unusedSymbols := []*model.Symbol{}
 
-	for _, file := range files {
-		// Get symbols in file
-		symbols, err := ua.db.GetSymbolsByFile(file.ID)
-		if err != nil {
-			continue
-		}
+	// for _, file := range files {
+	// 	symbols, err := ua.db.GetSymbolsByFile(file)
+	// 	if err != nil {
+	// 		continue
+	// 	}
 
-		for _, symbol := range symbols {
-			// Skip exported symbols (might be used externally)
-			if symbol.IsExported {
-				continue
-			}
+	// 	for _, symbol := range symbols {
+	// 		// Skip exported symbols (might be used externally)
+		// 	if strings.ToUpper(symbol.Name[0:1]) == symbol.Name[0:1] { // Check for exported
+		// 			continue
+		// 		}
 
-			// Check references
-			refs, err := ua.db.GetReferencesBySymbol(symbol.ID)
-			if err != nil {
-				continue
-			}
+		// 		// Check references
+		// 		refs, err := ua.db.GetReferencesBySymbol(symbol.ID)
+		// 		if err != nil {
+		// 			continue
+		// 		}
 
-			// No references = unused
-			if len(refs) == 0 {
-				unusedSymbols = append(unusedSymbols, symbol)
-			}
-		}
-	}
+		// 		// No references = unused
+		// 		if len(refs) == 0 {
+		// 			unusedSymbols = append(unusedSymbols, symbol)
+		// 		}
+		// 	}
+	// }
 
-	return unusedSymbols, nil
+	// return unusedSymbols, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // FindMostUsedSymbols finds the most frequently used symbols
-func (ua *UsageAnalyzer) FindMostUsedSymbols(projectID int64, limit int) ([]*types.SymbolUsageStats, error) {
-	// Get all files for project
-	files, err := ua.db.GetAllFilesForProject(projectID)
-	if err != nil {
-		return nil, err
-	}
+func (ua *UsageAnalyzer) FindMostUsedSymbols(projectID string, limit int) ([]*SymbolUsageStats, error) {
+	// TODO: Implement after DB methods are available
+	// // Get all files for project
+	// files, err := ua.db.GetAllFilesForProject(projectID)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	usageStats := []*types.SymbolUsageStats{}
+	// usageStats := []*SymbolUsageStats{}
 
-	for _, file := range files {
-		symbols, err := ua.db.GetSymbolsByFile(file.ID)
-		if err != nil {
-			continue
-		}
+	// for _, file := range files {
+	// 	symbols, err := ua.db.GetSymbolsByFile(file)
+	// 	if err != nil {
+	// 		continue
+	// 	}
 
-		for _, symbol := range symbols {
-			stats, err := ua.AnalyzeUsage(symbol.Name)
-			if err != nil {
-				continue
-			}
-			usageStats = append(usageStats, stats)
-		}
-	}
+	// 	for _, symbol := range symbols {
+	// 		stats, err := ua.AnalyzeUsage(symbol)
+	// 		if err != nil {
+	// 			continue
+		// 		}
+	// 		usageStats = append(usageStats, stats)
+	// 	}
+	// }
 
-	// Sort by usage count (simple bubble sort for small datasets)
-	for i := 0; i < len(usageStats)-1; i++ {
-		for j := 0; j < len(usageStats)-i-1; j++ {
-			if usageStats[j].UsageCount < usageStats[j+1].UsageCount {
-				usageStats[j], usageStats[j+1] = usageStats[j+1], usageStats[j]
-			}
-		}
-	}
+	// // Sort by usage count (simple bubble sort for small datasets)
+	// for i := 0; i < len(usageStats)-1; i++ {
+	// 	for j := 0; j < len(usageStats)-i-1; j++ {
+	// 		if usageStats[j].UsageCount < usageStats[j+1].UsageCount {
+	// 			usageStats[j], usageStats[j+1] = usageStats[j+1], usageStats[j]
+	// 		}
+	// 	}
+	// }
 
-	// Limit results
-	if len(usageStats) > limit {
-		usageStats = usageStats[:limit]
-	}
+	// // Limit results
+	// if len(usageStats) > limit {
+	// 	usageStats = usageStats[:limit]
+	// }
 
-	return usageStats, nil
+	// return usageStats, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // AnalyzeAPIUsage analyzes usage of public API
-func (ua *UsageAnalyzer) AnalyzeAPIUsage(projectID int64) (map[string]*types.SymbolUsageStats, error) {
-	files, err := ua.db.GetAllFilesForProject(projectID)
-	if err != nil {
-		return nil, err
-	}
+func (ua *UsageAnalyzer) AnalyzeAPIUsage(projectID string) (map[string]*SymbolUsageStats, error) {
+	// TODO: Implement after DB methods are available
+	// files, err := ua.db.GetAllFilesForProject(projectID)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	apiUsage := make(map[string]*types.SymbolUsageStats)
+	// apiUsage := make(map[string]*SymbolUsageStats)
 
-	for _, file := range files {
-		symbols, err := ua.db.GetSymbolsByFile(file.ID)
-		if err != nil {
-			continue
-		}
+	// for _, file := range files {
+	// 	symbols, err := ua.db.GetSymbolsByFile(file)
+	// 	if err != nil {
+	// 		continue
+	// 	}
 
-		for _, symbol := range symbols {
-			// Only analyze exported symbols (public API)
-			if !symbol.IsExported {
-				continue
-			}
+	// 	for _, symbol := range symbols {
+		// 	// Only analyze exported symbols (public API)
+		// 	if !strings.ToUpper(symbol.Name[0:1]) == symbol.Name[0:1] { // Check for exported
+		// 			continue
+		// 		}
 
-			stats, err := ua.AnalyzeUsage(symbol.Name)
-			if err != nil {
-				continue
-			}
+		// 		stats, err := ua.AnalyzeUsage(symbol)
+		// 		if err != nil {
+		// 			continue
+		// 		}
 
-			apiUsage[symbol.Name] = stats
-		}
-	}
+		// 		apiUsage[symbol.Name] = stats
+		// 	}
+	// }
 
-	return apiUsage, nil
+	// return apiUsage, nil
+	return nil, fmt.Errorf("not implemented")
 }

@@ -8,83 +8,78 @@ import (
 	"strings"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 )
 
 // MetricsCalculator calculates code quality metrics
 type MetricsCalculator struct {
-	db *database.DB
+	db *database.Manager
 }
 
 // NewMetricsCalculator creates a new metrics calculator
-func NewMetricsCalculator(db *database.DB) *MetricsCalculator {
+func NewMetricsCalculator(db *database.Manager) *MetricsCalculator {
 	return &MetricsCalculator{db: db}
 }
 
 // CalculateMetrics calculates metrics for a symbol
-func (mc *MetricsCalculator) CalculateMetrics(symbolName string) (*types.CodeMetrics, error) {
-	// Get the symbol
-	symbol, err := mc.db.GetSymbolByName(symbolName)
-	if err != nil {
-		return nil, err
-	}
-	if symbol == nil {
-		return nil, fmt.Errorf("symbol not found: %s", symbolName)
-	}
+func (mc *MetricsCalculator) CalculateMetrics(symbol *model.Symbol) (*CodeMetrics, error) {
+	// TODO: Implement after DB methods are available
+	// // Get the symbol
+	// if symbol == nil {
+	// 	return nil, fmt.Errorf("symbol cannot be nil")
+	// }
 
-	// Get file
-	file, err := mc.db.GetFile(symbol.FileID)
-	if err != nil {
-		return nil, err
-	}
+	// // Get file
+	// file := symbol.File
 
-	// Extract code
-	code, err := mc.extractCode(file.Path, symbol.StartLine, symbol.EndLine)
-	if err != nil {
-		return nil, err
-	}
+	// // Extract code
+	// code, err := mc.extractCode(file, symbol.Range.Start.Line, symbol.Range.End.Line)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	// Calculate metrics
-	loc := symbol.EndLine - symbol.StartLine + 1
-	cyclomaticComplexity := mc.calculateCyclomaticComplexity(code, file.Language)
-	cognitiveComplexity := mc.calculateCognitiveComplexity(code, file.Language)
-	maxNestingDepth := mc.calculateMaxNestingDepth(code, file.Language)
-	parameters := mc.countParameters(symbol.Signature)
-	returnStatements := mc.countReturnStatements(code)
-	commentDensity := mc.calculateCommentDensity(code, file.Language)
-	hasDocumentation := symbol.Documentation != ""
+	// // Calculate metrics
+	// loc := symbol.Range.End.Line - symbol.Range.Start.Line + 1
+	// cyclomaticComplexity := mc.calculateCyclomaticComplexity(code, symbol.Language)
+	// cognitiveComplexity := mc.calculateCognitiveComplexity(code, symbol.Language)
+	// maxNestingDepth := mc.calculateMaxNestingDepth(code, symbol.Language)
+	// parameters := mc.countParameters(symbol.Signature)
+	// returnStatements := mc.countReturnStatements(code)
+	// commentDensity := mc.calculateCommentDensity(code, symbol.Language)
+	// hasDocumentation := symbol.Documentation != ""
 
-	// Calculate maintainability index
-	// Formula: 171 - 5.2 * ln(HV) - 0.23 * CC - 16.2 * ln(LOC)
-	// Simplified version
-	maintainability := 100.0
-	if loc > 0 {
-		maintainability = 171.0 - 5.2*float64(cyclomaticComplexity) - 0.23*float64(cyclomaticComplexity) - 16.2*float64(loc)/10.0
-		if maintainability < 0 {
-			maintainability = 0
-		}
-		if maintainability > 100 {
-			maintainability = 100
-		}
-	}
+	// // Calculate maintainability index
+	// // Formula: 171 - 5.2 * ln(HV) - 0.23 * CC - 16.2 * ln(LOC)
+	// // Simplified version
+	// maintainability := 100.0
+	// if loc > 0 {
+	// 	maintainability = 171.0 - 5.2*float64(cyclomaticComplexity) - 0.23*float64(cyclomaticComplexity) - 16.2*float64(loc)/10.0
+	// 	if maintainability < 0 {
+	// 		maintainability = 0
+	// 	}
+	// 	if maintainability > 100 {
+	// 		maintainability = 100
+	// 	}
+	// }
 
-	// Determine quality
-	quality := mc.determineQuality(cyclomaticComplexity, cognitiveComplexity, maintainability, hasDocumentation)
+	// // Determine quality
+	// quality := mc.determineQuality(cyclomaticComplexity, cognitiveComplexity, maintainability, hasDocumentation)
 
-	return &types.CodeMetrics{
-		FilePath:             file.RelativePath,
-		FunctionName:         symbol.Name,
-		LinesOfCode:          loc,
-		CyclomaticComplexity: cyclomaticComplexity,
-		CognitiveComplexity:  cognitiveComplexity,
-		MaintainabilityIndex: maintainability,
-		Parameters:           parameters,
-		ReturnStatements:     returnStatements,
-		MaxNestingDepth:      maxNestingDepth,
-		CommentDensity:       commentDensity,
-		HasDocumentation:     hasDocumentation,
-		Quality:              quality,
-	}, nil
+	// return &CodeMetrics{
+	// 	FilePath:             file,
+	// 	FunctionName:         symbol.Name,
+	// 	LinesOfCode:          loc,
+	// 	CyclomaticComplexity: cyclomaticComplexity,
+	// 	CognitiveComplexity:  cognitiveComplexity,
+	// 	MaintainabilityIndex: maintainability,
+	// 	Parameters:           parameters,
+	// 	ReturnStatements:     returnStatements,
+	// 	MaxNestingDepth:      maxNestingDepth,
+	// 	CommentDensity:       commentDensity,
+	// 	HasDocumentation:     hasDocumentation,
+	// 	Quality:              quality,
+	// }, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // calculateCyclomaticComplexity calculates cyclomatic complexity
@@ -108,7 +103,7 @@ func (mc *MetricsCalculator) calculateCyclomaticComplexity(code, language string
 	case "javascript", "typescript":
 		patterns = []string{
 			`\bif\b`, `\bfor\b`, `\bwhile\b`, `\bcase\b`, `\bswitch\b`,
-			`&&`, `\|\|`, `\bcatch\b`, `\?.*:`,
+			`&&`, `\|\|`, `\bcatch\b`, `\?.*:`
 		}
 	default:
 		patterns = []string{
@@ -221,7 +216,7 @@ func (mc *MetricsCalculator) calculateCommentDensity(code, language string) floa
 	lines := strings.Split(code, "\n")
 	for _, line := range lines {
 		totalLines++
-		trimmed := strings.TrimSpace(line)
+		rimmed := strings.TrimSpace(line)
 
 		// Check for comments based on language
 		isComment := false
@@ -310,32 +305,29 @@ func (mc *MetricsCalculator) extractCode(filePath string, startLine, endLine int
 }
 
 // CalculateFileMetrics calculates metrics for an entire file
-func (mc *MetricsCalculator) CalculateFileMetrics(filePath string) ([]*types.CodeMetrics, error) {
-	// Get file
-	file, err := mc.db.GetFileByPath(0, filePath) // Need project ID
-	if err != nil {
-		return nil, err
-	}
-	if file == nil {
-		return nil, fmt.Errorf("file not found: %s", filePath)
-	}
+func (mc *MetricsCalculator) CalculateFileMetrics(filePath string) ([]*CodeMetrics, error) {
+	// TODO: Implement after DB methods are available
+	// // Get file
+	// file := filePath
 
-	// Get all symbols in file
-	symbols, err := mc.db.GetSymbolsByFile(file.ID)
-	if err != nil {
-		return nil, err
-	}
+	// // Get all symbols in file
+	// symbols, err := mc.db.GetSymbolsByFile(file)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	metrics := []*types.CodeMetrics{}
-	for _, symbol := range symbols {
-		if symbol.Type == types.SymbolTypeFunction || symbol.Type == types.SymbolTypeMethod {
-			metric, err := mc.CalculateMetrics(symbol.Name)
-			if err != nil {
-				continue // Skip on error
-			}
-			metrics = append(metrics, metric)
-		}
-	}
+	// metrics := []*CodeMetrics{}
+	// for _, symbol := range symbols {
+	// 	// TODO: Check symbol kind for function/method
+	// 	// if symbol.Type == types.SymbolTypeFunction || symbol.Type == types.SymbolTypeMethod {
+	// 	metric, err := mc.CalculateMetrics(symbol)
+	// 	if err != nil {
+	// 		continue // Skip on error
+	// 	}
+	// 	metrics = append(metrics, metric)
+	// 	// }
+	// }
 
-	return metrics, nil
+	// return metrics, nil
+	return nil, fmt.Errorf("not implemented")
 }

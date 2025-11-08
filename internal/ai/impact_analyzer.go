@@ -2,104 +2,104 @@ package ai
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 )
 
 // ImpactAnalyzer analyzes the impact of code changes
 type ImpactAnalyzer struct {
-	db *database.DB
+	db *database.Manager
 }
 
 // NewImpactAnalyzer creates a new impact analyzer
-func NewImpactAnalyzer(db *database.DB) *ImpactAnalyzer {
+func NewImpactAnalyzer(db *database.Manager) *ImpactAnalyzer {
 	return &ImpactAnalyzer{db: db}
 }
 
 // AnalyzeChangeImpact analyzes the impact of changing a symbol
-func (ia *ImpactAnalyzer) AnalyzeChangeImpact(symbolName string) (*types.ChangeImpact, error) {
-	// Get the symbol
-	symbol, err := ia.db.GetSymbolByName(symbolName)
-	if err != nil {
-		return nil, err
-	}
-	if symbol == nil {
-		return nil, fmt.Errorf("symbol not found: %s", symbolName)
-	}
+func (ia *ImpactAnalyzer) AnalyzeChangeImpact(symbolName string) (*ChangeImpact, error) {
+	// TODO: Implement after DB methods are available
+	// // Get the symbol
+	// symbol, err := ia.db.GetSymbolByName(symbolName)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// if symbol == nil {
+	// 	return nil, fmt.Errorf("symbol not found: %s", symbolName)
+	// }
 
-	// Get direct references
-	references, err := ia.db.GetReferencesBySymbol(symbol.ID)
-	if err != nil {
-		return nil, err
-	}
+	// // Get direct references
+	// references, err := ia.db.GetReferencesBySymbol(symbol.ID)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	directReferences := len(references)
+	// directReferences := len(references)
 
-	// Get affected files
-	affectedFilesMap := make(map[int64]*types.File)
-	for _, ref := range references {
-		if _, exists := affectedFilesMap[ref.FileID]; !exists {
-			if file, err := ia.db.GetFile(ref.FileID); err == nil {
-				affectedFilesMap[ref.FileID] = file
-			}
-		}
-	}
+	// // Get affected files
+	// affectedFilesMap := make(map[string]bool)
+	// for _, ref := range references {
+	// 	affectedFilesMap[ref.FilePath] = true
+	// }
 
-	affectedFiles := []*types.File{}
-	for _, file := range affectedFilesMap {
-		affectedFiles = append(affectedFiles, file)
-	}
+	// affectedFiles := []string{}
+	// for file := range affectedFilesMap {
+	// 	affectedFiles = append(affectedFiles, file)
+	// }
 
-	// Get affected symbols (symbols that reference this one)
-	affectedSymbols := []*types.Symbol{}
-	for _, ref := range references {
-		symbols, err := ia.db.GetSymbolsByFile(ref.FileID)
-		if err != nil {
-			continue
-		}
-		for _, sym := range symbols {
-			// Check if this symbol contains the reference
-			if sym.StartLine <= ref.LineNumber && sym.EndLine >= ref.LineNumber {
-				affectedSymbols = append(affectedSymbols, sym)
-				break
-			}
-		}
-	}
+	// // Get affected symbols (symbols that reference this one)
+	// affectedSymbols := []*model.Symbol{}
+	// for _, ref := range references {
+	// 	symbols, err := ia.db.GetSymbolsByFile(ref.FilePath)
+	// 	if err != nil {
+	// 		continue
+	// 	}
+	// 	for _, sym := range symbols {
+	// 		// Check if this symbol contains the reference
+	// 		if sym.Range.Start.Line <= ref.Line && sym.Range.End.Line >= ref.Line {
+	// 			affectedSymbols = append(affectedSymbols, sym)
+	// 			break
+	// 		}
+	// 	}
+	// }
 
-	// Determine risk level
-	riskLevel := ia.calculateRiskLevel(directReferences, len(affectedFiles), symbol)
+	// // Determine risk level
+	// riskLevel := ia.calculateRiskLevel(directReferences, len(affectedFiles), symbol)
 
-	// Generate suggestions
-	suggestions := ia.generateSuggestions(symbol, directReferences, affectedFiles)
+	// // Generate suggestions
+	// suggestions := ia.generateSuggestions(symbol, directReferences, affectedFiles)
 
-	// Check if this would be a breaking change
-	breakingChanges := ia.isBreakingChange(symbol, directReferences)
+	// // Check if this would be a breaking change
+	// breakingChanges := ia.isBreakingChange(symbol, directReferences)
 
-	// Calculate indirect references (transitive)
-	indirectReferences := ia.calculateIndirectReferences(affectedSymbols)
+	// // Calculate indirect references (transitive)
+	// indirectReferences := ia.calculateIndirectReferences(affectedSymbols)
 
-	return &types.ChangeImpact{
-		Symbol:             symbol,
-		DirectReferences:   directReferences,
-		IndirectReferences: indirectReferences,
-		AffectedFiles:      affectedFiles,
-		AffectedSymbols:    affectedSymbols,
-		RiskLevel:          riskLevel,
-		Suggestions:        suggestions,
-		BreakingChanges:    breakingChanges,
-	}, nil
+	// return &ChangeImpact{
+	// 	Symbol:             symbol,
+	// 	DirectReferences:   directReferences,
+	// 	IndirectReferences: indirectReferences,
+	// 	AffectedFiles:      affectedFiles,
+	// 	AffectedSymbols:    affectedSymbols,
+	// 	RiskLevel:          riskLevel,
+	// 	Suggestions:        suggestions,
+	// 	BreakingChanges:    breakingChanges,
+	// }, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // calculateRiskLevel determines the risk level of a change
-func (ia *ImpactAnalyzer) calculateRiskLevel(directRefs, affectedFiles int, symbol *types.Symbol) string {
+func (ia *ImpactAnalyzer) calculateRiskLevel(directRefs, affectedFiles int, symbol *model.Symbol) string {
 	// High risk criteria
 	if directRefs > 50 || affectedFiles > 20 {
 		return "high"
 	}
 
 	// Public/exported symbols are higher risk
-	if symbol.IsExported {
+	isExported := strings.ToUpper(symbol.Name[0:1]) == symbol.Name[0:1]
+	if isExported {
 		if directRefs > 20 || affectedFiles > 10 {
 			return "high"
 		}
@@ -118,7 +118,7 @@ func (ia *ImpactAnalyzer) calculateRiskLevel(directRefs, affectedFiles int, symb
 }
 
 // generateSuggestions generates refactoring suggestions
-func (ia *ImpactAnalyzer) generateSuggestions(symbol *types.Symbol, directRefs int, affectedFiles []*types.File) []string {
+func (ia *ImpactAnalyzer) generateSuggestions(symbol *model.Symbol, directRefs int, affectedFiles []string) []string {
 	suggestions := []string{}
 
 	if directRefs > 50 {
@@ -127,7 +127,8 @@ func (ia *ImpactAnalyzer) generateSuggestions(symbol *types.Symbol, directRefs i
 		suggestions = append(suggestions, "Create wrapper function for backward compatibility")
 	}
 
-	if symbol.IsExported && directRefs > 10 {
+	isExported := strings.ToUpper(symbol.Name[0:1]) == symbol.Name[0:1]
+	if isExported && directRefs > 10 {
 		suggestions = append(suggestions, "Mark as deprecated first with @deprecated tag")
 		suggestions = append(suggestions, "Update all examples in documentation")
 	}
@@ -142,113 +143,122 @@ func (ia *ImpactAnalyzer) generateSuggestions(symbol *types.Symbol, directRefs i
 		suggestions = append(suggestions, fmt.Sprintf("Update %d references across %d files", directRefs, len(affectedFiles)))
 	}
 
-	if symbol.Type == types.SymbolTypeInterface || symbol.Type == types.SymbolTypeClass {
-		suggestions = append(suggestions, "Check all implementations/subclasses")
-	}
+	// TODO: Check symbol kind for interface/class
+	// if symbol.Type == types.SymbolTypeInterface || symbol.Type == types.SymbolTypeClass {
+	// 	suggestions = append(suggestions, "Check all implementations/subclasses")
+	// }
 
 	return suggestions
 }
 
 // isBreakingChange checks if a change would be breaking
-func (ia *ImpactAnalyzer) isBreakingChange(symbol *types.Symbol, directRefs int) bool {
+func (ia *ImpactAnalyzer) isBreakingChange(symbol *model.Symbol, directRefs int) bool {
 	// Exported symbols with references are breaking changes
-	if symbol.IsExported && directRefs > 0 {
+	isExported := strings.ToUpper(symbol.Name[0:1]) == symbol.Name[0:1]
+	if isExported && directRefs > 0 {
 		return true
 	}
 
 	// Public API methods are breaking changes
-	if symbol.Visibility == types.VisibilityPublic && symbol.Type == types.SymbolTypeMethod {
-		return true
-	}
+	// TODO: Check symbol kind for method and visibility
+	// if symbol.Visibility == types.VisibilityPublic && symbol.Type == types.SymbolTypeMethod {
+	// 	return true
+	// }
 
 	return false
 }
 
 // calculateIndirectReferences calculates transitive references
-func (ia *ImpactAnalyzer) calculateIndirectReferences(affectedSymbols []*types.Symbol) int {
-	count := 0
-	seen := make(map[int64]bool)
+func (ia *ImpactAnalyzer) calculateIndirectReferences(affectedSymbols []*model.Symbol) int {
+	// TODO: Implement after DB methods are available
+	// count := 0
+	// seen := make(map[string]bool)
 
-	for _, symbol := range affectedSymbols {
-		if seen[symbol.ID] {
-			continue
-		}
-		seen[symbol.ID] = true
+	// for _, symbol := range affectedSymbols {
+	// 	if seen[symbol.ID] {
+	// 		continue
+	// 	}
+	// 	seen[symbol.ID] = true
 
-		// Count references to this affected symbol
-		if refs, err := ia.db.GetReferencesBySymbol(symbol.ID); err == nil {
-			count += len(refs)
-		}
-	}
+	// 	// Count references to this affected symbol
+	// 	if refs, err := ia.db.GetReferencesBySymbol(symbol.ID); err == nil {
+	// 		count += len(refs)
+	// 	}
+	// }
 
-	return count
+	// return count
+	return 0
 }
 
 // AnalyzeBulkImpact analyzes impact of changing multiple symbols
-func (ia *ImpactAnalyzer) AnalyzeBulkImpact(symbolNames []string) (map[string]*types.ChangeImpact, error) {
-	impacts := make(map[string]*types.ChangeImpact)
+func (ia *ImpactAnalyzer) AnalyzeBulkImpact(symbolNames []string) (map[string]*ChangeImpact, error) {
+	// TODO: Implement after DB methods are available
+	// impacts := make(map[string]*ChangeImpact)
 
-	for _, name := range symbolNames {
-		impact, err := ia.AnalyzeChangeImpact(name)
-		if err != nil {
-			continue // Skip errors
-		}
-		impacts[name] = impact
-	}
+	// for _, name := range symbolNames {
+	// 	impact, err := ia.AnalyzeChangeImpact(name)
+	// 	if err != nil {
+	// 		continue // Skip errors
+	// 	}
+	// 	impacts[name] = impact
+	// }
 
-	return impacts, nil
+	// return impacts, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // SuggestRefactorings suggests refactoring opportunities based on impact analysis
-func (ia *ImpactAnalyzer) SuggestRefactorings(symbolName string) ([]*types.RefactoringOpportunity, error) {
-	impact, err := ia.AnalyzeChangeImpact(symbolName)
-	if err != nil {
-		return nil, err
-	}
+func (ia *ImpactAnalyzer) SuggestRefactorings(symbolName string) ([]*RefactoringOpportunity, error) {
+	// TODO: Implement after DB methods are available
+	// impact, err := ia.AnalyzeChangeImpact(symbolName)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	opportunities := []*types.RefactoringOpportunity{}
+	// opportunities := []*RefactoringOpportunity{}
 
-	// High usage but low visibility - should be more visible
-	if impact.DirectReferences > 20 && impact.Symbol.Visibility == types.VisibilityPrivate {
-		opportunities = append(opportunities, &types.RefactoringOpportunity{
-			Type:        "increase_visibility",
-			Symbol:      impact.Symbol,
-			Description: "Consider making this symbol public - it's heavily used",
-			Reason:      fmt.Sprintf("Used %d times but marked as private", impact.DirectReferences),
-			Impact:      "medium",
-			Effort:      "low",
-			Benefits:    []string{"Better API surface", "More discoverable"},
-			Risks:       []string{"Increased API surface to maintain"},
-		})
-	}
+	// // High usage but low visibility - should be more visible
+	// if impact.DirectReferences > 20 && impact.Symbol.Visibility == types.VisibilityPrivate {
+	// 	opportunities = append(opportunities, &RefactoringOpportunity{
+	// 		Type:        "increase_visibility",
+	// 		Symbol:      impact.Symbol,
+	// 		Description: "Consider making this symbol public - it's heavily used",
+	// 		Reason:      fmt.Sprintf("Used %d times but marked as private", impact.DirectReferences),
+	// 		Impact:      "medium",
+	// 		Effort:      "low",
+	// 		Benefits:    []string{"Better API surface", "More discoverable"},
+	// 		Risks:       []string{"Increased API surface to maintain"},
+	// 	})
+	// }
 
-	// Very high usage - consider splitting
-	if impact.DirectReferences > 100 {
-		opportunities = append(opportunities, &types.RefactoringOpportunity{
-			Type:        "extract_interface",
-			Symbol:      impact.Symbol,
-			Description: "Consider extracting interface - very high usage",
-			Reason:      fmt.Sprintf("Used %d times - hard to change", impact.DirectReferences),
-			Impact:      "high",
-			Effort:      "high",
-			Benefits:    []string{"Better abstraction", "Easier to test", "More flexible"},
-			Risks:       []string{"More complex codebase", "Migration effort"},
-		})
-	}
+	// // Very high usage - consider splitting
+	// if impact.DirectReferences > 100 {
+	// 	opportunities = append(opportunities, &RefactoringOpportunity{
+	// 		Type:        "extract_interface",
+	// 		Symbol:      impact.Symbol,
+	// 		Description: "Consider extracting interface - very high usage",
+	// 		Reason:      fmt.Sprintf("Used %d times - hard to change", impact.DirectReferences),
+	// 		Impact:      "high",
+	// 		Effort:      "high",
+	// 		Benefits:    []string{"Better abstraction", "Easier to test", "More flexible"},
+	// 		Risks:       []string{"More complex codebase", "Migration effort"},
+	// 	})
+	// }
 
-	// Spread across many files - might need better organization
-	if len(impact.AffectedFiles) > 30 {
-		opportunities = append(opportunities, &types.RefactoringOpportunity{
-			Type:        "consolidate_usage",
-			Symbol:      impact.Symbol,
-			Description: "Usage spread across too many files",
-			Reason:      fmt.Sprintf("Used in %d files - might indicate coupling", len(impact.AffectedFiles)),
-			Impact:      "medium",
-			Effort:      "high",
-			Benefits:    []string{"Reduced coupling", "Better modularity"},
-			Risks:       []string{"Large refactoring effort"},
-		})
-	}
+	// // Spread across many files - might need better organization
+	// if len(impact.AffectedFiles) > 30 {
+	// 	opportunities = append(opportunities, &RefactoringOpportunity{
+	// 		Type:        "consolidate_usage",
+	// 		Symbol:      impact.Symbol,
+	// 		Description: "Usage spread across too many files",
+	// 		Reason:      fmt.Sprintf("Used in %d files - might indicate coupling", len(impact.AffectedFiles)),
+	// 		Impact:      "medium",
+	// 		Effort:      "high",
+	// 		Benefits:    []string{"Reduced coupling", "Better modularity"},
+	// 		Risks:       []string{"Large refactoring effort"},
+	// 	})
+	// }
 
-	return opportunities, nil
+	// return opportunities, nil
+	return nil, fmt.Errorf("not implemented")
 }
