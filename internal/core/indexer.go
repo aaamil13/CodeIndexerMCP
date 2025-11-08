@@ -39,7 +39,7 @@ import (
 // Indexer is the main code indexer
 type Indexer struct {
 	projectPath      string
-	db               *database.DB
+	db               *database.Manager
 	parsers          *parser.Registry
 	ignoreMatcher    *utils.IgnoreMatcher
 	project          *model.Project
@@ -155,7 +155,7 @@ func (idx *Indexer) Initialize() error {
 
 	// Open database
 	dbPath := filepath.Join(indexDir, "index.db")
-	db, err := database.Open(dbPath)
+	db, err := database.NewManager(dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}

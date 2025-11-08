@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
@@ -65,12 +64,11 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 
 	// Extract imports
 	for _, imp := range file.Imports {
-		importPath := strings.Trim(imp.Path.Value, "")
-		importKind := model.ImportKindExternal
+		importPath := strings.Trim(imp.Path.Value, `""`)
 
 		// Detect if it's stdlib
 		if !strings.Contains(importPath, ".") {
-			importKind = model.ImportKindStdlib
+			// importKind = model.ImportKindStdlib
 		}
 
 		result.Imports = append(result.Imports, &model.Import{
@@ -79,14 +77,11 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 				Start: model.Position{Line: fset.Position(imp.Pos()).Line},
 				End:   model.Position{Line: fset.Position(imp.End()).Line},
 			},
-			Metadata: map[string]string{
-				"kind": string(importKind),
-			},
 		})
 	}
 
 	// Walk the AST
-	areas.Inspect(file, func(n ast.Node) bool {
+	ast.Inspect(file, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.FuncDecl:
 			symbol := p.extractFunction(node, fset, file)
@@ -190,7 +185,7 @@ func (p *Parser) extractGenDecl(decl *ast.GenDecl, fset *token.FileSet, file *as
 func (p *Parser) extractTypeSpec(spec *ast.TypeSpec, decl *ast.GenDecl, fset *token.FileSet) *model.Symbol {
 	symbol := &model.Symbol{
 		Name: spec.Name.Name,
-		Kind: model.SymbolKindType,
+		Kind: model.SymbolKindTypeAlias,
 		File: "", // File path will be set by the caller
 		Range: model.Range{
 			Start: model.Position{Line: fset.Position(spec.Pos()).Line},
@@ -304,7 +299,7 @@ func (p *Parser) exprToString(expr ast.Expr) string {
 	// This is a simplified conversion. A full implementation would need to handle
 	// various expression types (e.g., StarExpr, ArrayType, MapType, FuncType, etc.)
 	// For now, we'll just use the string representation of the expression.
-	sswitch e := expr.(type) {
+	switch e := expr.(type) {
 	case *ast.Ident:
 		sb.WriteString(e.Name)
 	case *ast.StarExpr:

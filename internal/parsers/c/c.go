@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 

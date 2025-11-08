@@ -37,6 +37,83 @@ func NewManager(dbPath string) (*Manager, error) {
 	return &Manager{db: db}, nil
 }
 
+func (m *Manager) Close() error {
+	return m.db.Close()
+}
+
+func (m *Manager) Stats() (map[string]int, error) {
+	// TODO: Implement this properly
+	return nil, nil
+}
+
+func (m *Manager) SearchSymbols(opts model.SearchOptions) ([]*model.Symbol, error) {
+	// TODO: Implement this properly
+	return nil, nil
+}
+
+func (m *Manager) SaveRelationship(rel *model.Relationship) error {
+	// TODO: Implement this properly
+	return nil
+}
+
+func (m *Manager) SaveImport(imp *model.Import) error {
+	// TODO: Implement this properly
+	return nil
+}
+
+func (m *Manager) DeleteImportsByFile(fileID int) error {
+	// TODO: Implement this properly
+	return nil
+}
+
+func (m *Manager) DeleteSymbolsByFile(fileID int) error {
+	// TODO: Implement this properly
+	return nil
+}
+
+func (m *Manager) SaveFile(file *model.File) error {
+	// TODO: Implement this properly
+	return nil
+}
+
+func (m *Manager) Transaction(f func(tx *sql.Tx) error) error {
+	tx, err := m.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := f(tx); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (m *Manager) GetFileByPath(projectID int, relPath string) (*model.File, error) {
+	// TODO: Implement this properly
+	return nil, nil
+}
+
+func (m *Manager) UpdateProject(project *model.Project) error {
+	// TODO: Implement this properly
+	return nil
+}
+
+func (m *Manager) CreateProject(project *model.Project) error {
+	// TODO: Implement this properly
+	return nil
+}
+
+func (m *Manager) GetProject(projectPath string) (*model.Project, error) {
+	// TODO: Implement this properly
+	return &model.Project{
+		ID:   1,
+		Path: projectPath,
+		Name: "dummy",
+	}, nil
+}
+
 func (m *Manager) SaveSymbol(symbol *model.Symbol) error {
 	metadata, _ := json.Marshal(symbol.Metadata)
 
@@ -449,26 +526,59 @@ func (m *Manager) GetSymbolsByFile(filePath string) ([]*model.Symbol, error) {
 	return symbols, nil
 }
 
-func (m *Manager) GetAllFilesForProject(projectID string) ([]string, error) {
-	// Since there's no explicit projects table, we'll consider all files
-	// in the symbols table as part of the "project" for now.
-	// In a real scenario, projectID would filter files.
-	query := `SELECT DISTINCT file_path FROM symbols`
-	rows, err := m.db.Query(query)
+func (m *Manager) GetSymbolsByFile(filePath string) ([]*model.Symbol, error) {
+	query := `
+        SELECT id, name, kind, file_path, language, signature, documentation,
+               visibility, start_line, start_column, start_byte,
+               end_line, end_column, end_byte, content_hash, status, priority,
+               assigned_agent, created_at, updated_at, metadata
+        FROM symbols
+        WHERE file_path = ?
+    `
+	rows, err := m.db.Query(query, filePath)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var files []string
+	var symbols []*model.Symbol
 	for rows.Next() {
-		var filePath string
-		if err := rows.Scan(&filePath); err != nil {
+		s := &model.Symbol{}
+		var metadataStr string
+		var createdAt, updatedAt time.Time
+		var assignedAgent sql.NullString
+
+		err := rows.Scan(
+			&s.ID, &s.Name, &s.Kind, &s.File, &s.Language, &s.Signature, &s.Documentation,
+			&s.Visibility, &s.Range.Start.Line, &s.Range.Start.Column, &s.Range.Start.Byte,
+			&s.Range.End.Line, &s.Range.End.Column, &s.Range.End.Byte, &s.ContentHash, &s.Status, &s.Priority,
+			&assignedAgent, &createdAt, &updatedAt, &metadataStr,
+		)
+		if err != nil {
 			return nil, err
 		}
-		files = append(files, filePath)
+
+		s.CreatedAt = createdAt
+		s.UpdatedAt = updatedAt
+		if assignedAgent.Valid {
+			s.AssignedAgent = assignedAgent.String
+		}
+
+		if metadataStr != "" {
+			err = json.Unmarshal([]byte(metadataStr), &s.Metadata)
+			if err != nil {
+				return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+			}
+		}
+		symbols = append(symbols, s)
 	}
-	return files, nil
+
+	return symbols, nil
+}
+
+func (m *Manager) GetAllFilesForProject(projectID int) ([]*model.File, error) {
+	// TODO: Implement this properly
+	return nil, nil
 }
 
 func (m *Manager) GetMethodsForType(typeSymbolID string) ([]*model.Method, error) {

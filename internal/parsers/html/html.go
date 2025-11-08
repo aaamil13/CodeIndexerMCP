@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
@@ -25,7 +24,7 @@ func (p *HTMLParser) Language() string {
 
 // Extensions returns file extensions this parser handles (e.g., [".html", ".htm"])
 func (p *HTMLParser) Extensions() []string {
-	return []string{”.html", ".htm"}
+	return []string{".html", ".htm"}
 }
 
 // Priority returns parser priority (higher = preferred when multiple parsers match)
@@ -79,7 +78,7 @@ func (p *HTMLParser) extractIDs(content string, result *parsing.ParseResult) {
 			File:       "", // File path will be set by the caller
 			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: model.VisibilityPublic,
-			Signature:  "<" + tag + " id=\"" + id + "\">";
+			Signature:  "<" + tag + " id=\"" + id + "\">",
 			Metadata: map[string]string{
 				"tag": tag,
 				"id":  id,
@@ -122,7 +121,7 @@ func (p *HTMLParser) extractClasses(content string, result *parsing.ParseResult)
 				File:       "", // File path will be set by the caller
 				Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 				Visibility: model.VisibilityPublic,
-				Signature:  "<" + tag + " class=\"" + className + "\">";
+				Signature:  "<" + tag + " class=\"" + className + "\">",
 				Metadata: map[string]string{
 					"tag":   tag,
 					"class": className,

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
@@ -188,7 +187,10 @@ func (p *CSharpParser) extractTypes(lines []string, content string, result *pars
 
 		symbol := &model.Symbol{
 			Name:       name,
-			            Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: p.findClosingBrace(lines, lineNum-1)}},			Visibility: p.parseVisibility(visibility),
+			Kind:       symbolKind,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: p.findClosingBrace(lines, lineNum-1)}},
+			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}
 

@@ -5,9 +5,9 @@ import (
 	"log"
 	"regexp"
 	"strings"
+	"strconv"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
@@ -68,7 +68,7 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 	for scanner.Scan() {
 		lineNumber++
 		line := scanner.Text()
-		rimmed := strings.TrimSpace(line)
+		trimmed := strings.TrimSpace(line)
 		log.Printf("DEBUG: Line %d: %s (trimmed: %s)", lineNumber, line, trimmed)
 
 		if (strings.HasPrefix(trimmed, `"""`) || strings.HasPrefix(trimmed, "'''")) {
@@ -116,9 +116,23 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 		indent := len(line) - len(strings.TrimLeft(line, " "))
 		log.Printf("DEBUG: Line %d: Indent %d, parentStack size: %d", lineNumber, indent, len(parentStack))
 
-		for len(parentStack) > 0 && indent <= parentStack[len(parentStack)-1].Metadata["indent"].(int) {
-			log.Printf("DEBUG: Popping from parentStack. Current indent %d <= parent indent %d (Symbol: %s)", indent, parentStack[len(parentStack)-1].Metadata["indent"].(int), parentStack[len(parentStack)-1].Name)
-			parentStack = parentStack[:len(parentStack)-1]
+		for len(parentStack) > 0 {
+			indentStr, ok := parentStack[len(parentStack)-1].Metadata["indent"]
+			if !ok {
+				// Handle error or default value
+				break
+			}
+			parentIndent, err := strconv.Atoi(indentStr)
+			if err != nil {
+				// Handle error
+				break
+			}
+			if indent <= parentIndent {
+				log.Printf("DEBUG: Popping from parentStack. Current indent %d <= parent indent %d (Symbol: %s)", indent, parentIndent, parentStack[len(parentStack)-1].Name)
+				parentStack = parentStack[:len(parentStack)-1]
+			} else {
+				break
+			}
 		}
 
 		if indent == 0 && len(parentStack) > 0 {
@@ -149,7 +163,7 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 			}
 
 			result.Symbols = append(result.Symbols, symbol)
-			symbol.Metadata["indent"] = string(indent)
+			symbol.Metadata["indent"] = strconv.Itoa(indent)
 			parentStack = append(parentStack, symbol)
 			log.Printf("DEBUG: Class Symbol: %s, Doc: '%s', parentStack size: %d", className, pendingDocstring, len(parentStack))
 			pendingDocstring = ""
@@ -212,7 +226,7 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 				log.Printf("DEBUG: Associated decorators %v with function '%s' at line %d", decorators, funcName, lineNumber)
 			}
 
-			symbol.Metadata["indent"] = string(indent)
+			symbol.Metadata["indent"] = strconv.Itoa(indent)
 			result.Symbols = append(result.Symbols, symbol)
 			parentStack = append(parentStack, symbol)
 			log.Printf("DEBUG: Function/Method Symbol: %s, Kind: %s, Doc: '%s', parentStack size: %d", funcName, symbolKind, pendingDocstring, len(parentStack))
@@ -230,9 +244,6 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 					Range: model.Range{
 						Start: model.Position{Line: lineNumber},
 						End:   model.Position{Line: lineNumber},
-					},
-					Metadata: map[string]string{
-						"kind": string(p.getImportType(imp)),
 					},
 				})
 			}
@@ -258,9 +269,6 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 				Range: model.Range{
 					Start: model.Position{Line: lineNumber},
 					End:   model.Position{Line: lineNumber},
-				},
-				Metadata: map[string]string{
-					"kind": string(p.getImportType(source)),
 				},
 			})
 			log.Printf("DEBUG: Found from-import: from %s import %v at line %d", source, importedNames, lineNumber)

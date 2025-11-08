@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
@@ -25,7 +24,7 @@ func (p *CSSParser) Language() string {
 
 // Extensions returns file extensions this parser handles (e.g., [".css", ".scss"])
 func (p *CSSParser) Extensions() []string {
-	return []string{'.css', '.scss', '.sass', '.less'}
+	return []string{".css", ".scss", ".sass", ".less"}
 }
 
 // Priority returns parser priority (higher = preferred when multiple parsers match)

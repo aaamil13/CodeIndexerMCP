@@ -67,6 +67,7 @@ const (
 	VisibilityPrivate   Visibility = "private"
 	VisibilityProtected Visibility = "protected"
 	VisibilityInternal  Visibility = "internal"
+	VisibilityPackage   Visibility = "package"
 	VisibilityUnknown   Visibility = "unknown"
 )
 
@@ -214,7 +215,7 @@ type BuildTask struct {
 
 // Имплементации на интерфейса
 func (s *Symbol) GetName() string   { return s.Name }
-func (s *Symbol) GetKind() string   { return s.Kind }
+func (s *Symbol) GetKind() string   { return string(s.Kind) }
 func (s *Symbol) GetRange() Range   { return s.Range }
 func (s *Symbol) GetFile() string   { return s.File }
 

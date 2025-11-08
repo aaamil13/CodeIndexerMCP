@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
@@ -51,7 +50,7 @@ func (p *JSONParser) Parse(content []byte, filePath string) (*parsing.ParseResul
 	// Parse JSON structure
 	var data interface{}
 	if err := json.Unmarshal(content, &data); err != nil {
-		result.Errors = append(result.Errors, parsing.ParseError{
+		result.ParseErrors = append(result.ParseErrors, parsing.ParseError{
 			Line:    1,
 			Column:  1,
 			Message: fmt.Sprintf("JSON parse error: %v", err),
@@ -227,7 +226,7 @@ func (p *XMLParser) Parse(content []byte, filePath string) (*parsing.ParseResult
 
 	var root Node
 	if err := xml.Unmarshal(content, &root); err != nil {
-		result.Errors = append(result.Errors, parsing.ParseError{
+		result.ParseErrors = append(result.ParseErrors, parsing.ParseError{
 			Line:    1,
 			Column:  1,
 			Message: fmt.Sprintf("XML parse error: %v", err),

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
@@ -25,7 +24,7 @@ func (p *PHPParser) Language() string {
 
 // Extensions returns file extensions this parser handles (e.g., [".php"])
 func (p *PHPParser) Extensions() []string {
-	return []string{”.php"}
+	return []string{".php"}
 }
 
 // Priority returns parser priority (higher = preferred when multiple parsers match)
@@ -97,7 +96,7 @@ func (p *PHPParser) extractUses(lines []string, result *parsing.ParseResult) {
 			importPath := matches[1]
 			// alias := matches[2] // Declared and not used
 
-			im := &model.Import{
+			imp := &model.Import{
 				Path: importPath,
 				Range: model.Range{
 					Start: model.Position{Line: i + 1},
