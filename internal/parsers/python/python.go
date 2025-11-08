@@ -151,7 +151,7 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 				Name:          className,
 				Kind:          model.SymbolKindClass,
 				File:          "", // File path will be set by the caller
-				Range:         model.Range{Start: model.Position{Line: lineNumber}, End: model.Position{Line: lineNumber}},
+				Range:         model.Range{Start: model.Position{Line: lineNumber, Column: 1, Byte: 1}, End: model.Position{Line: lineNumber, Column: 1, Byte: 1}},
 				Visibility:    p.getVisibility(className),
 				Documentation: pendingDocstring,
 				Metadata:      make(map[string]string),
@@ -200,7 +200,7 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 				Kind:          symbolKind,
 				Signature:     signature,
 				File:          "", // File path will be set by the caller
-				Range:         model.Range{Start: model.Position{Line: lineNumber}, End: model.Position{Line: lineNumber}},
+				Range:         model.Range{Start: model.Position{Line: lineNumber, Column: 1, Byte: 1}, End: model.Position{Line: lineNumber, Column: 1, Byte: 1}},
 				Visibility:    p.getVisibility(funcName),
 				Documentation: pendingDocstring,
 				Metadata:      make(map[string]string),
@@ -242,8 +242,8 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 				result.Imports = append(result.Imports, &model.Import{
 					Path: imp,
 					Range: model.Range{
-						Start: model.Position{Line: lineNumber},
-						End:   model.Position{Line: lineNumber},
+						Start: model.Position{Line: lineNumber, Column: 1, Byte: 1},
+						End:   model.Position{Line: lineNumber, Column: 1, Byte: 1},
 					},
 				})
 			}
@@ -267,8 +267,8 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 				Path:    source,
 				Members: importedNames,
 				Range: model.Range{
-					Start: model.Position{Line: lineNumber},
-					End:   model.Position{Line: lineNumber},
+					Start: model.Position{Line: lineNumber, Column: 1, Byte: 1},
+					End:   model.Position{Line: lineNumber, Column: 1, Byte: 1},
 				},
 			})
 			log.Printf("DEBUG: Found from-import: from %s import %v at line %d", source, importedNames, lineNumber)
@@ -281,7 +281,7 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 				Name:       decoratorName,
 				Kind:       model.SymbolKindDecorator,
 				File:       "", // File path will be set by the caller
-				Range:      model.Range{Start: model.Position{Line: lineNumber}, End: model.Position{Line: lineNumber}},
+				Range:      model.Range{Start: model.Position{Line: lineNumber, Column: 1, Byte: 1}, End: model.Position{Line: lineNumber, Column: 1, Byte: 1}},
 				Visibility: model.VisibilityPublic,
 			})
 			log.Printf("DEBUG: Found decorator: %s at line %d", decoratorName, lineNumber)
@@ -298,7 +298,7 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 						Name:       varName,
 						Kind:       symbolKind,
 						File:       "", // File path will be set by the caller
-						Range:      model.Range{Start: model.Position{Line: lineNumber}, End: model.Position{Line: lineNumber}},
+						Range:      model.Range{Start: model.Position{Line: lineNumber, Column: 1, Byte: 1}, End: model.Position{Line: lineNumber, Column: 1, Byte: 1}},
 						Visibility: p.getVisibility(varName),
 					})
 					log.Printf("DEBUG: Found variable/constant: %s, Kind: %s at line %d", varName, symbolKind, lineNumber)

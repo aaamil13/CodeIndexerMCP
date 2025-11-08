@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS imports (
 );
 
 -- Таблица за референции между символи
-CREATE TABLE IF NOT EXISTS references (
+CREATE TABLE IF NOT EXISTS code_references (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_symbol_id TEXT NOT NULL,
     target_symbol_name TEXT NOT NULL,

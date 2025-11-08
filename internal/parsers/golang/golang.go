@@ -74,8 +74,8 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 		result.Imports = append(result.Imports, &model.Import{
 			Path: importPath,
 			Range: model.Range{
-				Start: model.Position{Line: fset.Position(imp.Pos()).Line},
-				End:   model.Position{Line: fset.Position(imp.End()).Line},
+				Start: model.Position{Line: fset.Position(imp.Pos()).Line, Column: 1, Byte: 1},
+				End:   model.Position{Line: fset.Position(imp.End()).Line, Column: 1, Byte: 1},
 			},
 		})
 	}
@@ -105,7 +105,7 @@ func (p *Parser) extractFunction(fn *ast.FuncDecl, fset *token.FileSet, file *as
 		Name:      fn.Name.Name,
 		Kind:      model.SymbolKindFunction,
 		File:      "", // File path will be set by the caller
-		Range:     model.Range{Start: model.Position{Line: fset.Position(fn.Pos()).Line}, End: model.Position{Line: fset.Position(fn.End()).Line}},
+		Range:     model.Range{Start: model.Position{Line: fset.Position(fn.Pos()).Line, Column: 1, Byte: 1}, End: model.Position{Line: fset.Position(fn.End()).Line, Column: 1, Byte: 1}},
 		Signature: p.buildFunctionSignature(fn),
 	}
 
@@ -156,8 +156,8 @@ func (p *Parser) extractGenDecl(decl *ast.GenDecl, fset *token.FileSet, file *as
 					Kind: symbolKind,
 					File: "", // File path will be set by the caller
 					Range: model.Range{
-						Start: model.Position{Line: fset.Position(name.Pos()).Line},
-						End:   model.Position{Line: fset.Position(name.End()).Line},
+						Start: model.Position{Line: fset.Position(name.Pos()).Line, Column: 1, Byte: 1},
+						End:   model.Position{Line: fset.Position(name.End()).Line, Column: 1, Byte: 1},
 					},
 				}
 
@@ -188,8 +188,8 @@ func (p *Parser) extractTypeSpec(spec *ast.TypeSpec, decl *ast.GenDecl, fset *to
 		Kind: model.SymbolKindTypeAlias,
 		File: "", // File path will be set by the caller
 		Range: model.Range{
-			Start: model.Position{Line: fset.Position(spec.Pos()).Line},
-			End:   model.Position{Line: fset.Position(spec.End()).Line},
+			Start: model.Position{Line: fset.Position(spec.Pos()).Line, Column: 1, Byte: 1},
+			End:   model.Position{Line: fset.Position(spec.End()).Line, Column: 1, Byte: 1},
 		},
 	}
 

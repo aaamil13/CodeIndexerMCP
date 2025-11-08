@@ -221,5 +221,5 @@ func (ct *ChangeTracker) GenerateAutoFixes(change *model.Change) ([]*model.AutoF
 // SimulateChange simulates a change without applying it
 func (ct *ChangeTracker) SimulateChange(symbolName string, changeType model.ChangeType, newValue string) (*model.ChangeImpact, error) {
 	// TODO: Implement after DB methods are available
-	return nil, nil
+	return nil, fmt.Errorf("not implemented")
 }

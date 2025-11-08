@@ -155,6 +155,7 @@ const (
 	ChangeTypeAdd    ChangeType = "add"
 	ChangeTypeDelete ChangeType = "delete"
 	ChangeTypeRename ChangeType = "rename"
+	ChangeTypeMove   ChangeType = "move"
 )
 
 // Change represents a single change to a symbol
@@ -188,8 +189,11 @@ type ChangeSet struct {
 
 // DependencyGraph represents a dependency graph for a symbol
 type DependencyGraph struct {
-	Nodes []*DependencyNode
-	Edges []*DependencyEdge
+	Nodes              []*DependencyNode
+	Edges              []*DependencyEdge
+	DirectDependencies int
+	DirectDependents   int
+	CouplingScore      float64
 }
 
 // DependencyNode represents a node in a dependency graph

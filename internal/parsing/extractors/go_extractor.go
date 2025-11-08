@@ -73,14 +73,14 @@ func (ge *GoExtractor) ExtractFunctions(parseResult *parsing.ParseResult, filePa
     
     for _, match := range queryResult.Matches {
         var funcName, returnType, body string
-        var funcNode, paramsNode *sitter.Node  // ПРОМЯНА: запазваме node вместо string
+        var funcNode, paramsNode *sitter.Node
         
         for _, capture := range match.Captures {
             switch capture.Name {
             case "func.name":
                 funcName = capture.Text
             case "func.params":
-                paramsNode = capture.Node  // ПРОМЯНА: запазваме node
+                paramsNode = capture.Node
             case "func.return":
                 returnType = capture.Text
             case "func.body":
@@ -97,10 +97,8 @@ func (ge *GoExtractor) ExtractFunctions(parseResult *parsing.ParseResult, filePa
         pos := ge.NodeToPosition(funcNode)
         funcRange := ge.NodeToRange(funcNode)
         
-        // ПРОМЯНА: използваме parseParametersFromNode вместо parseParameters
         parameters := ge.parseParametersFromNode(paramsNode, parseResult.SourceCode)
         
-        // 💡 ПОДОБРЕНИЕ #5: Изчисляване на content hash
         contentHash := ge.ComputeContentHash(body)
         
         function := &model.Function{
@@ -113,7 +111,7 @@ func (ge *GoExtractor) ExtractFunctions(parseResult *parsing.ParseResult, filePa
                 Signature:     ge.buildSignature(funcName, parameters, returnType),
                 Documentation: ge.ExtractDocumentation(funcNode, parseResult.SourceCode),
                 Language:      "go",
-                ContentHash:   contentHash,  // НОВО
+                ContentHash:   contentHash,
                 Status:        ge.ExtractStatusFromComments(funcNode, parseResult.SourceCode),
                 Priority:      ge.ExtractPriorityFromComments(funcNode, parseResult.SourceCode),
                 CreatedAt:     time.Now(),
@@ -139,8 +137,8 @@ func (ge *GoExtractor) ExtractMethods(parseResult *parsing.ParseResult, filePath
     methods := make([]*model.Method, 0)
     
     for _, match := range queryResult.Matches {
-        var methodName, receiverType, params, returnType, body string
-        var methodNode *sitter.Node
+        var methodName, receiverType, returnType, body string
+        var methodNode, paramsNode *sitter.Node
         
         for _, capture := range match.Captures {
             switch capture.Name {
@@ -149,7 +147,7 @@ func (ge *GoExtractor) ExtractMethods(parseResult *parsing.ParseResult, filePath
             case "method.receiver_type":
                 receiverType = capture.Text
             case "method.params":
-                params = capture.Text
+                paramsNode = capture.Node
             case "method.return":
                 returnType = capture.Text
             case "method.body":
@@ -174,7 +172,7 @@ func (ge *GoExtractor) ExtractMethods(parseResult *parsing.ParseResult, filePath
                     Kind:          "method",
                     File:          filePath,
                     Range:         methodRange,
-                    Signature:     fmt.Sprintf("func (%s) %s%s %s", receiverType, methodName, params, returnType),
+                    Signature:     fmt.Sprintf("func (%s) %s%s %s", receiverType, methodName, paramsNode.Content(parseResult.SourceCode), returnType),
                     Documentation: ge.ExtractDocumentation(methodNode, parseResult.SourceCode),
                     Language:      "go",
                     Status:        ge.ExtractStatusFromComments(methodNode, parseResult.SourceCode),
@@ -182,7 +180,7 @@ func (ge *GoExtractor) ExtractMethods(parseResult *parsing.ParseResult, filePath
                     CreatedAt:     time.Now(),
                     UpdatedAt:     time.Now(),
                 },
-                Parameters: ge.parseParameters(params),
+                Parameters: ge.parseParametersFromNode(paramsNode, parseResult.SourceCode),
                 ReturnType: strings.TrimSpace(returnType),
                 Body:       body,
             },
@@ -265,67 +263,31 @@ func (ge *GoExtractor) parseParametersFromNode(paramsNode *sitter.Node, source [
         return params
     }
     
-    // Обхождане на всички parameter_declaration nodes
     for i := 0; i < int(paramsNode.ChildCount()); i++ {
         child := paramsNode.Child(i)
         
-        if child.Type() != "parameter_declaration" {
-            continue
-        }
-        
-        param := ge.extractParameter(child, source)
-        if param != nil {
-            params = append(params, *param)
-        }
-    }
-    
-    return params
-}
-
-func (ge *GoExtractor) extractParameter(paramNode *sitter.Node, source []byte) *model.Parameter {
-    var name, paramType string
-    var isVariadic bool
-    
-    // Обхождане на под-нодовете на параметъра
-    for i := 0; i < int(paramNode.ChildCount()); i++ {
-        child := paramNode.Child(i)
-        
-        switch child.Type() {
-        case "identifier":
-            // Име на параметър
-            name = ge.ExtractText(child, source)
+        if child.Type() == "parameter_declaration" {
+            var paramType string
+            var names []string
+            for j := 0; j < int(child.ChildCount()); j++ {
+                grandChild := child.Child(j)
+                if grandChild.Type() == "identifier" {
+                    names = append(names, ge.ExtractText(grandChild, source))
+                } else {
+                    paramType = ge.ExtractText(grandChild, source)
+                }
+            }
             
-        case "type_identifier", "qualified_type", "pointer_type", 
-             "array_type", "slice_type", "struct_type", "interface_type",
-             "function_type", "map_type", "channel_type":
-            // Тип на параметър
-            paramType = ge.ExtractText(child, source)
-            
-        case "variadic_parameter_declaration":
-            // Variadic параметър (...Type)
-            isVariadic = true
-            // Извличане на типа от variadic декларацията
-            if child.ChildCount() > 0 {
-                typeNode := child.Child(child.ChildCount() - 1)
-                paramType = "..." + ge.ExtractText(typeNode, source)
+            for _, name := range names {
+                params = append(params, model.Parameter{
+                    Name: name,
+                    Type: paramType,
+                })
             }
         }
     }
     
-    // Ако няма име, но има тип, това е анонимен параметър
-    if name == "" && paramType != "" {
-        name = "_"
-    }
-    
-    if paramType == "" {
-        return nil
-    }
-    
-    return &model.Parameter{
-        Name:       name,
-        Type:       paramType,
-        IsVariadic: isVariadic,
-    }
+    return params
 }
 
 func (ge *GoExtractor) buildSignature(name string, params []model.Parameter, returnType string) string {

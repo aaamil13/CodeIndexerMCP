@@ -1,12 +1,11 @@
 package extractors
 
 import (
-    "crypto/sha256"
-    "fmt"
-    "time"
-    
-    "github.com/aaamil13/CodeIndexerMCP/internal/model"
-    sitter "github.com/smacker/go-tree-sitter"
+	"crypto/sha256"
+	"fmt"
+
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
+	sitter "github.com/smacker/go-tree-sitter"
 )
 
 type BaseExtractor struct {

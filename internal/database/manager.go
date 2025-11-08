@@ -8,6 +8,7 @@ import (
 	_ "embed"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
+	"github.com/aaamil13/CodeIndexerMCP/internal/utils" // Import the utils package for logger
 	_ "modernc.org/sqlite"
 )
 
@@ -21,9 +22,10 @@ func applySchema(db *sql.DB) error {
 
 type Manager struct {
 	db *sql.DB
+	logger *utils.Logger // Add logger field
 }
 
-func NewManager(dbPath string) (*Manager, error) {
+func NewManager(dbPath string, logger *utils.Logger) (*Manager, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, err
@@ -34,7 +36,7 @@ func NewManager(dbPath string) (*Manager, error) {
 		return nil, err
 	}
 
-	return &Manager{db: db}, nil
+	return &Manager{db: db, logger: logger}, nil
 }
 
 func (m *Manager) Close() error {
@@ -55,12 +57,15 @@ func (m *Manager) SaveRelationship(rel *model.Relationship) error {
 	return nil
 }
 
-func (m *Manager) DeleteFile(fileID int) error {
+func (m *Manager) SaveImport(imp *model.Import) error {
 	return nil
 }
 
-func (m *Manager) SaveImport(imp *model.Import) error {
-	// TODO: Implement this properly
+func (m *Manager) SaveReference(ref *model.Reference) error {
+	return nil
+}
+
+func (m *Manager) DeleteFile(fileID int) error {
 	return nil
 }
 
@@ -118,24 +123,42 @@ func (m *Manager) GetProject(projectPath string) (*model.Project, error) {
 }
 
 func (m *Manager) SaveSymbol(symbol *model.Symbol) error {
-	metadata, _ := json.Marshal(symbol.Metadata)
-
 	query := `
         INSERT OR REPLACE INTO symbols (
-            id, name, kind, file_path, language, signature, documentation,
-            visibility, start_line, start_column, start_byte,
+            id, name, kind, file_path, language,
+            start_line, start_column, start_byte,
             end_line, end_column, end_byte, content_hash, status, priority,
-            assigned_agent, created_at, updated_at, metadata
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            assigned_agent, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
+	
+	// Log the values being passed to db.Exec
+	m.logger.Debug("Saving symbol to DB:",
+		"ID", symbol.ID,
+		"Name", symbol.Name,
+		"Kind", string(symbol.Kind),
+		"File", symbol.File,
+		"Language", symbol.Language,
+		"StartLine", symbol.Range.Start.Line,
+		"StartColumn", symbol.Range.Start.Column,
+		"StartByte", symbol.Range.Start.Byte,
+		"EndLine", symbol.Range.End.Line,
+		"EndColumn", symbol.Range.End.Column,
+		"EndByte", symbol.Range.End.Byte,
+		"ContentHash", symbol.ContentHash,
+		"Status", string(symbol.Status),
+		"Priority", symbol.Priority,
+		"AssignedAgent", symbol.AssignedAgent,
+		"CreatedAt", symbol.CreatedAt.Format(time.RFC3339),
+		"UpdatedAt", symbol.UpdatedAt.Format(time.RFC3339),
+	)
 
 	_, err := m.db.Exec(query,
-		symbol.ID, symbol.Name, symbol.Kind, symbol.File, symbol.Language,
-		symbol.Signature, symbol.Documentation, symbol.Visibility,
+		symbol.ID, symbol.Name, string(symbol.Kind), symbol.File, symbol.Language,
 		symbol.Range.Start.Line, symbol.Range.Start.Column, symbol.Range.Start.Byte,
 		symbol.Range.End.Line, symbol.Range.End.Column, symbol.Range.End.Byte,
-		symbol.ContentHash, symbol.Status, symbol.Priority, symbol.AssignedAgent,
-		symbol.CreatedAt, symbol.UpdatedAt, string(metadata),
+		symbol.ContentHash, string(symbol.Status), symbol.Priority, symbol.AssignedAgent,
+		symbol.CreatedAt.Format(time.RFC3339), symbol.UpdatedAt.Format(time.RFC3339),
 	)
 
 	return err
@@ -420,7 +443,7 @@ func (m *Manager) scanSymbol(row *sql.Row) (*model.Symbol, error) {
 func (m *Manager) GetReferencesBySymbol(symbolID string) ([]*model.Reference, error) {
 	query := `
         SELECT source_symbol_id, target_symbol_name, reference_type, file_path, line, column
-        FROM references
+        FROM code_references
         WHERE source_symbol_id = ? OR target_symbol_name = (SELECT name FROM symbols WHERE id = ?)
     `
 	rows, err := m.db.Query(query, symbolID, symbolID)

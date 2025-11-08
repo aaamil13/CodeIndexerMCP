@@ -154,7 +154,7 @@ func (idx *Indexer) Initialize() error {
 
 	// Open database
 	dbPath := filepath.Join(indexDir, "index.db")
-	db, err := database.NewManager(dbPath)
+	db, err := database.NewManager(dbPath, idx.logger) // Pass idx.logger here
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -335,6 +335,9 @@ func (idx *Indexer) IndexFile(filePath string) error {
 		// Save symbols
 		for _, symbol := range parseResult.Symbols {
 			symbol.File = file.Path // Set the file path for the symbol
+			symbol.ID = utils.GenerateID(symbol.File, symbol.Name, string(symbol.Kind), symbol.Range.Start.Line)
+			symbol.CreatedAt = time.Now()
+			symbol.UpdatedAt = time.Now()
 			if err := idx.db.SaveSymbol(symbol); err != nil { // Use idx.db directly
 				return fmt.Errorf("failed to save symbol %s in file %s: %w", symbol.Name, relPath, err)
 			}
