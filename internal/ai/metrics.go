@@ -103,7 +103,7 @@ func (mc *MetricsCalculator) calculateCyclomaticComplexity(code, language string
 	case "javascript", "typescript":
 		patterns = []string{
 			`\bif\b`, `\bfor\b`, `\bwhile\b`, `\bcase\b`, `\bswitch\b`,
-			`&&`, `\|\|`, `\bcatch\b`, `\?.*:`
+			`&&`, `\|\|`, `\bcatch\b`, `\?.*:`,
 		}
 	default:
 		patterns = []string{
@@ -216,7 +216,7 @@ func (mc *MetricsCalculator) calculateCommentDensity(code, language string) floa
 	lines := strings.Split(code, "\n")
 	for _, line := range lines {
 		totalLines++
-		rimmed := strings.TrimSpace(line)
+		trimmed := strings.TrimSpace(line)
 
 		// Check for comments based on language
 		isComment := false

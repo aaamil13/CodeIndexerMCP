@@ -4,28 +4,46 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // RustParser parses Rust source code
 type RustParser struct {
-	*parser.BaseParser
 }
 
 // NewParser creates a new Rust parser
 func NewParser() *RustParser {
-	return &RustParser{
-		BaseParser: parser.NewBaseParser("rust", []string{".rs"}, 100),
-	}
+	return &RustParser{}
+}
+
+// Language returns the language identifier (e.g., "rust")
+func (p *RustParser) Language() string {
+	return "rust"
+}
+
+// Extensions returns file extensions this parser handles (e.g., [".rs"])
+func (p *RustParser) Extensions() []string {
+	return []string{".rs"}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *RustParser) Priority() int {
+	return 100
+}
+
+// SupportsFramework checks if parser supports specific framework analysis
+func (p *RustParser) SupportsFramework(framework string) bool {
+	return false
 }
 
 // Parse parses Rust source code
-func (p *RustParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       make([]*types.Symbol, 0),
-		Imports:       make([]*types.Import, 0),
-		Relationships: make([]*types.Relationship, 0),
+func (p *RustParser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols:       make([]*model.Symbol, 0),
+		Imports:       make([]*model.Import, 0),
+		Relationships: make([]*model.Relationship, 0),
 		Metadata:      make(map[string]interface{}),
 	}
 
@@ -55,21 +73,24 @@ func (p *RustParser) Parse(content []byte, filePath string) (*types.ParseResult,
 	return result, nil
 }
 
-func (p *RustParser) extractUses(lines []string, result *types.ParseResult) {
+func (p *RustParser) extractUses(lines []string, result *parsing.ParseResult) {
 	useRe := regexp.MustCompile(`^\s*use\s+([\w:{}*,\s]+);`)
 
 	for i, line := range lines {
 		if matches := useRe.FindStringSubmatch(line); matches != nil {
-			imp := &types.Import{
-				Source:     matches[1],
-				LineNumber: i + 1,
+			imp := &model.Import{
+				Path: matches[1],
+				Range: model.Range{
+					Start: model.Position{Line: i + 1},
+					End:   model.Position{Line: i + 1},
+				},
 			}
 			result.Imports = append(result.Imports, imp)
 		}
 	}
 }
 
-func (p *RustParser) extractMods(lines []string, result *types.ParseResult) {
+func (p *RustParser) extractMods(lines []string, result *parsing.ParseResult) {
 	modRe := regexp.MustCompile(`^\s*(pub\s+)?mod\s+(\w+)`)
 
 	for i, line := range lines {
@@ -77,16 +98,16 @@ func (p *RustParser) extractMods(lines []string, result *types.ParseResult) {
 			isPublic := matches[1] != ""
 			name := matches[2]
 
-			visibility := types.VisibilityPrivate
+			visibility := model.VisibilityPrivate
 			if isPublic {
-				visibility = types.VisibilityPublic
+				visibility = model.VisibilityPublic
 			}
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:       name,
-				Type:       types.SymbolTypeModule,
-				StartLine:  i + 1,
-				EndLine:    i + 1,
+				Kind:       model.SymbolKindModule,
+				File:       "", // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: i + 1}, End: model.Position{Line: i + 1}},
 				Visibility: visibility,
 				Signature:  "mod " + name,
 			}
@@ -96,7 +117,7 @@ func (p *RustParser) extractMods(lines []string, result *types.ParseResult) {
 	}
 }
 
-func (p *RustParser) extractTypes(content string, result *types.ParseResult) {
+func (p *RustParser) extractTypes(content string, result *parsing.ParseResult) {
 	// Struct declaration
 	structRe := regexp.MustCompile(`(?m)^\s*(pub\s+)?struct\s+(\w+)(?:<[^>]+>)?`)
 
@@ -107,16 +128,16 @@ func (p *RustParser) extractTypes(content string, result *types.ParseResult) {
 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		visibility := types.VisibilityPrivate
+		visibility := model.VisibilityPrivate
 		if isPublic {
-			visibility = types.VisibilityPublic
+			visibility = model.VisibilityPublic
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeStruct,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindStruct,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: visibility,
 			Signature:  "struct " + name,
 		}
@@ -134,16 +155,16 @@ func (p *RustParser) extractTypes(content string, result *types.ParseResult) {
 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		visibility := types.VisibilityPrivate
+		visibility := model.VisibilityPrivate
 		if isPublic {
-			visibility = types.VisibilityPublic
+			visibility = model.VisibilityPublic
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeEnum,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindEnum,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: visibility,
 			Signature:  "enum " + name,
 		}
@@ -161,20 +182,20 @@ func (p *RustParser) extractTypes(content string, result *types.ParseResult) {
 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		visibility := types.VisibilityPrivate
+		visibility := model.VisibilityPrivate
 		if isPublic {
-			visibility = types.VisibilityPublic
+			visibility = model.VisibilityPublic
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeVariable,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindVariable,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: visibility,
 			Signature:  "type " + name,
-			Metadata: map[string]interface{}{
-				"type_alias": true,
+			Metadata: map[string]string{
+				"type_alias": "true",
 			},
 		}
 
@@ -182,7 +203,7 @@ func (p *RustParser) extractTypes(content string, result *types.ParseResult) {
 	}
 }
 
-func (p *RustParser) extractTraits(content string, result *types.ParseResult) {
+func (p *RustParser) extractTraits(content string, result *parsing.ParseResult) {
 	traitRe := regexp.MustCompile(`(?m)^\s*(pub\s+)?trait\s+(\w+)(?:<[^>]+>)?`)
 
 	matches := traitRe.FindAllStringSubmatchIndex(content, -1)
@@ -192,16 +213,16 @@ func (p *RustParser) extractTraits(content string, result *types.ParseResult) {
 
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		visibility := types.VisibilityPrivate
+		visibility := model.VisibilityPrivate
 		if isPublic {
-			visibility = types.VisibilityPublic
+			visibility = model.VisibilityPublic
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeInterface, // Traits are like interfaces
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindInterface, // Traits are like interfaces
+			File:       "",                        // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: visibility,
 			Signature:  "trait " + name,
 		}
@@ -210,7 +231,7 @@ func (p *RustParser) extractTraits(content string, result *types.ParseResult) {
 	}
 }
 
-func (p *RustParser) extractImpls(content string, result *types.ParseResult) {
+func (p *RustParser) extractImpls(content string, result *parsing.ParseResult) {
 	// impl Trait for Type
 	implRe := regexp.MustCompile(`(?m)^\s*impl(?:<[^>]+>)?\s+(\w+)\s+for\s+(\w+)`)
 
@@ -220,15 +241,15 @@ func (p *RustParser) extractImpls(content string, result *types.ParseResult) {
 		typeName := content[match[4]:match[5]]
 
 		// Add relationship
-		result.Relationships = append(result.Relationships, &types.Relationship{
-			Type:       types.RelationshipImplements,
-			SourceName: typeName,
-			TargetName: traitName,
+		result.Relationships = append(result.Relationships, &model.Relationship{
+			Type:       model.RelationshipKindImplements,
+			SourceSymbol: typeName,
+			TargetSymbol: traitName,
 		})
 	}
 }
 
-func (p *RustParser) extractFunctions(content string, result *types.ParseResult) {
+func (p *RustParser) extractFunctions(content string, result *parsing.ParseResult) {
 	// Function declaration
 	funcRe := regexp.MustCompile(`(?m)^\s*(pub\s+)?(?:async\s+)?(?:unsafe\s+)?(?:extern\s+"[^"]+"\s+)?fn\s+(\w+)(?:<[^>]+>)?\s*\(([^)]*)\)(?:\s*->\s*([\w<>&]+))?`)
 
@@ -253,16 +274,16 @@ func (p *RustParser) extractFunctions(content string, result *types.ParseResult)
 			sig += " -> " + returnType
 		}
 
-		visibility := types.VisibilityPrivate
+		visibility := model.VisibilityPrivate
 		if isPublic {
-			visibility = types.VisibilityPublic
+			visibility = model.VisibilityPublic
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeFunction,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindFunction,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: visibility,
 			Signature:  sig,
 		}

@@ -4,28 +4,46 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // SwiftParser parses Swift source code
 type SwiftParser struct {
-	*parser.BaseParser
 }
 
 // NewParser creates a new Swift parser
 func NewParser() *SwiftParser {
-	return &SwiftParser{
-		BaseParser: parser.NewBaseParser("swift", []string{".swift"}, 100),
-	}
+	return &SwiftParser{}
+}
+
+// Language returns the language identifier (e.g., "swift")
+func (p *SwiftParser) Language() string {
+	return "swift"
+}
+
+// Extensions returns file extensions this parser handles (e.g., ".swift")
+func (p *SwiftParser) Extensions() []string {
+	return []string{".swift"}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *SwiftParser) Priority() int {
+	return 100
+}
+
+// SupportsFramework checks if parser supports specific framework analysis
+func (p *SwiftParser) SupportsFramework(framework string) bool {
+	return false
 }
 
 // Parse parses Swift source code
-func (p *SwiftParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       make([]*types.Symbol, 0),
-		Imports:       make([]*types.Import, 0),
-		Relationships: make([]*types.Relationship, 0),
+func (p *SwiftParser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols:       make([]*model.Symbol, 0),
+		Imports:       make([]*model.Import, 0),
+		Relationships: make([]*model.Relationship, 0),
 		Metadata:      make(map[string]interface{}),
 	}
 
@@ -52,23 +70,26 @@ func (p *SwiftParser) Parse(content []byte, filePath string) (*types.ParseResult
 	return result, nil
 }
 
-func (p *SwiftParser) extractImports(lines []string, result *types.ParseResult) {
+func (p *SwiftParser) extractImports(lines []string, result *parsing.ParseResult) {
 	importRe := regexp.MustCompile(`^\s*import\s+([\w.]+)`)
 
 	for i, line := range lines {
 		if matches := importRe.FindStringSubmatch(line); matches != nil {
-			imp := &types.Import{
-				Source:     matches[1],
-				LineNumber: i + 1,
+			imp := &model.Import{
+				Path: matches[1],
+				Range: model.Range{
+					Start: model.Position{Line: i + 1},
+					End:   model.Position{Line: i + 1},
+				},
 			}
 			result.Imports = append(result.Imports, imp)
 		}
 	}
 }
 
-func (p *SwiftParser) extractTypes(content string, result *types.ParseResult) {
+func (p *SwiftParser) extractTypes(content string, result *parsing.ParseResult) {
 	// Class, struct, protocol, enum, actor
-	typeRe := regexp.MustCompile(`(?m)^\s*(?:@[\w.()]+\s+)*(public|private|fileprivate|internal|open)?\s*(final|static)?\s*(class|struct|protocol|enum|actor)\s+(\w+)(?:\s*:\s*([\w,\s&]+))?`)
+	typeRe := regexp.MustCompile(`(?m)^\s*(?:@[\w.()]+)?\s*(?:final|static)?\s*(class|struct|protocol|enum|actor)\s+(\w+)(?:\s*:\s*([\w,\s&]+))?`)
 
 	matches := typeRe.FindAllStringSubmatchIndex(content, -1)
 	for _, match := range matches {
@@ -93,18 +114,18 @@ func (p *SwiftParser) extractTypes(content string, result *types.ParseResult) {
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
 		// Determine symbol type
-		var symbolType types.SymbolType
+		var symbolKind model.SymbolKind
 		switch typeKind {
 		case "class", "actor":
-			symbolType = types.SymbolTypeClass
+			symbolKind = model.SymbolKindClass
 		case "struct":
-			symbolType = types.SymbolTypeStruct
+			symbolKind = model.SymbolKindStruct
 		case "protocol":
-			symbolType = types.SymbolTypeInterface
+			symbolKind = model.SymbolKindInterface
 		case "enum":
-			symbolType = types.SymbolTypeEnum
+			symbolKind = model.SymbolKindEnum
 		default:
-			symbolType = types.SymbolTypeClass
+			symbolKind = model.SymbolKindClass
 		}
 
 		sig := typeKind + " " + name
@@ -112,17 +133,17 @@ func (p *SwiftParser) extractTypes(content string, result *types.ParseResult) {
 			sig += ": " + inheritance
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       symbolType,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       symbolKind,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -139,10 +160,10 @@ func (p *SwiftParser) extractTypes(content string, result *types.ParseResult) {
 				part = strings.TrimSpace(part)
 
 				if part != "" {
-					result.Relationships = append(result.Relationships, &types.Relationship{
-						Type:       types.RelationshipExtends,
-						SourceName: name,
-						TargetName: part,
+					result.Relationships = append(result.Relationships, &model.Relationship{
+						Type:       model.RelationshipKindExtends,
+						SourceSymbol: name,
+						TargetSymbol: part,
 					})
 				}
 			}
@@ -150,7 +171,7 @@ func (p *SwiftParser) extractTypes(content string, result *types.ParseResult) {
 	}
 }
 
-func (p *SwiftParser) extractExtensions(content string, result *types.ParseResult) {
+func (p *SwiftParser) extractExtensions(content string, result *parsing.ParseResult) {
 	extRe := regexp.MustCompile(`(?m)^\s*extension\s+(\w+)(?:\s*:\s*([\w,\s&]+))?`)
 
 	matches := extRe.FindAllStringSubmatchIndex(content, -1)
@@ -169,15 +190,15 @@ func (p *SwiftParser) extractExtensions(content string, result *types.ParseResul
 			sig += ": " + protocols
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name + " (extension)",
-			Type:       types.SymbolTypeClass,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindClass, // Extensions are applied to classes/structs/enums
+			File:       "",                    // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  sig,
-			Metadata: map[string]interface{}{
-				"extension": true,
+			Metadata: map[string]string{
+				"extension": "true",
 			},
 		}
 
@@ -189,10 +210,10 @@ func (p *SwiftParser) extractExtensions(content string, result *types.ParseResul
 			for _, protocol := range parts {
 				protocol = strings.TrimSpace(protocol)
 				if protocol != "" {
-					result.Relationships = append(result.Relationships, &types.Relationship{
-						Type:       types.RelationshipImplements,
-						SourceName: name,
-						TargetName: protocol,
+					result.Relationships = append(result.Relationships, &model.Relationship{
+						Type:       model.RelationshipKindImplements,
+						SourceSymbol: name,
+						TargetSymbol: protocol,
 					})
 				}
 			}
@@ -200,9 +221,9 @@ func (p *SwiftParser) extractExtensions(content string, result *types.ParseResul
 	}
 }
 
-func (p *SwiftParser) extractFunctions(content string, result *types.ParseResult) {
+func (p *SwiftParser) extractFunctions(content string, result *parsing.ParseResult) {
 	// Function/method declaration
-	funcRe := regexp.MustCompile(`(?m)^\s*(?:@[\w.()]+\s+)*(public|private|fileprivate|internal|open)?\s*(static|class|mutating|override|final)?\s*func\s+(\w+)(?:<[^>]+>)?\s*\(([^)]*)\)(?:\s*(?:async|throws|rethrows))?\s*(?:->\s*([\w<>?]+))?`)
+	funcRe := regexp.MustCompile(`(?m)^\s*(?:@[\w.()]+)?\s*(?:static|class|mutating|override|final)?\s*func\s+(\w+)(?:<[^>]+>)?\s*\(([^)]*)\)(?:\s*(?:async|throws|rethrows))?\s*(?:->\s*([\w<>?]+))?`)
 
 	matches := funcRe.FindAllStringSubmatchIndex(content, -1)
 	for _, match := range matches {
@@ -234,17 +255,17 @@ func (p *SwiftParser) extractFunctions(content string, result *types.ParseResult
 			sig += " -> " + returnType
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeFunction,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindFunction,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -276,17 +297,17 @@ func (p *SwiftParser) extractFunctions(content string, result *types.ParseResult
 
 		sig := "init(" + params + ")"
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       "init",
-			Type:       types.SymbolTypeConstructor,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindConstructor,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -295,7 +316,7 @@ func (p *SwiftParser) extractFunctions(content string, result *types.ParseResult
 	}
 }
 
-func (p *SwiftParser) extractProperties(content string, result *types.ParseResult) {
+func (p *SwiftParser) extractProperties(content string, result *parsing.ParseResult) {
 	// Property declaration: var/let
 	propRe := regexp.MustCompile(`(?m)^\s*(public|private|fileprivate|internal|open)?\s*(static|class|lazy)?\s*(var|let)\s+(\w+)\s*:\s*([\w<>?[\]]+)`)
 
@@ -319,17 +340,17 @@ func (p *SwiftParser) extractProperties(content string, result *types.ParseResul
 
 		sig := varOrLet + " " + name + ": " + propType
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeProperty,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindProperty,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -338,17 +359,17 @@ func (p *SwiftParser) extractProperties(content string, result *types.ParseResul
 	}
 }
 
-func (p *SwiftParser) parseVisibility(vis string) types.Visibility {
+func (p *SwiftParser) parseVisibility(vis string) model.Visibility {
 	switch strings.ToLower(vis) {
 	case "public", "open":
-		return types.VisibilityPublic
+		return model.VisibilityPublic
 	case "private":
-		return types.VisibilityPrivate
+		return model.VisibilityPrivate
 	case "fileprivate":
-		return types.VisibilityPrivate // File-scoped
+		return model.VisibilityPrivate // File-scoped
 	case "internal":
-		return types.VisibilityInternal
+		return model.VisibilityInternal
 	default:
-		return types.VisibilityInternal // Swift default is internal
+		return model.VisibilityInternal // Swift default is internal
 	}
 }

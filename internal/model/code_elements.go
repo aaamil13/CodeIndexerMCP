@@ -35,16 +35,61 @@ type CodeElement interface {
     GetFile() string
 }
 
+// SymbolKind defines the type of a symbol
+type SymbolKind string
+
+const (
+	SymbolKindFile        SymbolKind = "file"
+	SymbolKindModule      SymbolKind = "module"
+	SymbolKindNamespace   SymbolKind = "namespace"
+	SymbolKindPackage     SymbolKind = "package"
+	SymbolKindClass       SymbolKind = "class"
+	SymbolKindMethod      SymbolKind = "method"
+	SymbolKindFunction    SymbolKind = "function"
+	SymbolKindConstructor SymbolKind = "constructor"
+	SymbolKindVariable    SymbolKind = "variable"
+	SymbolKindConstant    SymbolKind = "constant"
+	SymbolKindField       SymbolKind = "field"
+	SymbolKindProperty    SymbolKind = "property"
+	SymbolKindEnum        SymbolKind = "enum"
+	SymbolKindInterface   SymbolKind = "interface"
+	SymbolKindStruct      SymbolKind = "struct"
+	SymbolKindTypeAlias   SymbolKind = "type_alias"
+	SymbolKindDecorator   SymbolKind = "decorator"
+	SymbolKindUnknown     SymbolKind = "unknown"
+)
+
+// Visibility defines the visibility of a symbol
+type Visibility string
+
+const (
+	VisibilityPublic    Visibility = "public"
+	VisibilityPrivate   Visibility = "private"
+	VisibilityProtected Visibility = "protected"
+	VisibilityInternal  Visibility = "internal"
+	VisibilityUnknown   Visibility = "unknown"
+)
+
+// ImportKind defines the type of an import
+type ImportKind string
+
+const (
+	ImportKindStdlib   ImportKind = "stdlib"
+	ImportKindLocal    ImportKind = "local"
+	ImportKindExternal ImportKind = "external"
+	ImportKindUnknown  ImportKind = "unknown"
+)
+
 // Symbol представя универсален символ
 type Symbol struct {
     ID            string            `json:"id"`
     Name          string            `json:"name"`
-    Kind          string            `json:"kind"` // "function", "class", "method", etc.
+    Kind          SymbolKind        `json:"kind"` // "function", "class", "method", etc.
     File          string            `json:"file"`
     Range         Range             `json:"range"`
     Signature     string            `json:"signature"`
     Documentation string            `json:"documentation"`
-    Visibility    string            `json:"visibility"` // "public", "private", "protected"
+    Visibility    Visibility        `json:"visibility"` // "public", "private", "protected"
     Language      string            `json:"language"`
     
     // 💡 ПОДОБРЕНИЕ #5: Content Hash за детекция на промени
@@ -115,6 +160,7 @@ type Field struct {
 
 // Import представя импорт
 type Import struct {
+    FilePath   string   `json:"file_path"` // Path of the file where this import was found
     Path       string   `json:"path"`
     Alias      string   `json:"alias,omitempty"`
     Members    []string `json:"members,omitempty"`
@@ -190,6 +236,27 @@ type Reference struct {
 	FilePath         string `json:"file_path"`
 	Line             int    `json:"line"`
 	Column           int    `json:"column"`
+}
+
+// RelationshipType defines the type of relationship
+type RelationshipType string
+
+const (
+	RelationshipKindCalls      RelationshipType = "calls"
+	RelationshipKindUses       RelationshipType = "uses"
+	RelationshipKindExtends    RelationshipType = "extends"
+	RelationshipKindImplements RelationshipType = "implements"
+	RelationshipKindComposes   RelationshipType = "composes"
+)
+
+// Relationship represents a relationship between two symbols
+type Relationship struct {
+	Type         RelationshipType `json:"type"`
+	SourceSymbol string           `json:"source_symbol"` // Name or ID of the source symbol
+	TargetSymbol string           `json:"target_symbol"` // Name or ID of the target symbol
+	FilePath     string           `json:"file_path"`     // File where the relationship was found
+	Line         int              `json:"line"`          // Line number where the relationship was found
+	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 
 // FrameworkInfo holds information about detected frameworks

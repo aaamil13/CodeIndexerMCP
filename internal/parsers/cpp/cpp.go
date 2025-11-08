@@ -25,7 +25,7 @@ func (p *CppParser) Language() string {
 
 // Extensions returns file extensions this parser handles (e.g., [".cpp", ".h"])
 func (p *CppParser) Extensions() []string {
-	return []string{'.cpp', '.cc', '.cxx', '.hpp', '.h', '.hxx'}
+	return []string{".cpp", ".cc", ".cxx", ".hpp", ".h", ".hxx"}
 }
 
 // Priority returns parser priority (higher = preferred when multiple parsers match)

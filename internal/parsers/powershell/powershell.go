@@ -4,28 +4,46 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // PowerShellParser parses PowerShell source code
 type PowerShellParser struct {
-	*parser.BaseParser
 }
 
 // NewParser creates a new PowerShell parser
 func NewParser() *PowerShellParser {
-	return &PowerShellParser{
-		BaseParser: parser.NewBaseParser("powershell", []string{".ps1", ".psm1", ".psd1"}, 100),
-	}
+	return &PowerShellParser{}
+}
+
+// Language returns the language identifier (e.g., "powershell")
+func (p *PowerShellParser) Language() string {
+	return "powershell"
+}
+
+// Extensions returns file extensions this parser handles (e.g., [".ps1", ".psm1"])
+func (p *PowerShellParser) Extensions() []string {
+	return []string{".ps1", ".psm1", ".psd1"}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *PowerShellParser) Priority() int {
+	return 100
+}
+
+// SupportsFramework checks if parser supports specific framework analysis
+func (p *PowerShellParser) SupportsFramework(framework string) bool {
+	return false
 }
 
 // Parse parses PowerShell source code
-func (p *PowerShellParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       make([]*types.Symbol, 0),
-		Imports:       make([]*types.Import, 0),
-		Relationships: make([]*types.Relationship, 0),
+func (p *PowerShellParser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols:       make([]*model.Symbol, 0),
+		Imports:       make([]*model.Import, 0),
+		Relationships: make([]*model.Relationship, 0),
 		Metadata:      make(map[string]interface{}),
 	}
 
@@ -49,17 +67,19 @@ func (p *PowerShellParser) Parse(content []byte, filePath string) (*types.ParseR
 	return result, nil
 }
 
-func (p *PowerShellParser) extractImports(lines []string, result *types.ParseResult) {
+func (p *PowerShellParser) extractImports(lines []string, result *parsing.ParseResult) {
 	importModuleRe := regexp.MustCompile(`^\s*Import-Module\s+([^\s#]+)`)
 	usingRe := regexp.MustCompile(`^\s*using\s+(?:module|namespace)\s+([^\s#]+)`)
 
 	for i, line := range lines {
 		// Import-Module
 		if matches := importModuleRe.FindStringSubmatch(line); matches != nil {
-			imp := &types.Import{
-				Source:     matches[1],
-				LineNumber: i + 1,
-				// Alias field no longer exists in types.Import
+			imp := &model.Import{
+				Path: matches[1],
+				Range: model.Range{
+					Start: model.Position{Line: i + 1},
+					End:   model.Position{Line: i + 1},
+				},
 			}
 			result.Imports = append(result.Imports, imp)
 			continue
@@ -67,16 +87,19 @@ func (p *PowerShellParser) extractImports(lines []string, result *types.ParseRes
 
 		// using module/namespace
 		if matches := usingRe.FindStringSubmatch(line); matches != nil {
-			imp := &types.Import{
-				Source:     matches[1],
-				LineNumber: i + 1,
+			imp := &model.Import{
+				Path: matches[1],
+				Range: model.Range{
+					Start: model.Position{Line: i + 1},
+					End:   model.Position{Line: i + 1},
+				},
 			}
 			result.Imports = append(result.Imports, imp)
 		}
 	}
 }
 
-func (p *PowerShellParser) extractFunctions(content string, result *types.ParseResult) {
+func (p *PowerShellParser) extractFunctions(content string, result *parsing.ParseResult) {
 	// Function declaration
 	funcRe := regexp.MustCompile(`(?im)^\s*function\s+([\w-]+)\s*(?:\(([^)]*)\))?\s*{`)
 
@@ -95,12 +118,12 @@ func (p *PowerShellParser) extractFunctions(content string, result *types.ParseR
 			sig += "(" + params + ")"
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeFunction,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindFunction,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  sig,
 		}
 
@@ -115,15 +138,15 @@ func (p *PowerShellParser) extractFunctions(content string, result *types.ParseR
 		name := content[match[2]:match[3]]
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeFunction,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindFunction,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "filter " + name,
-			Metadata: map[string]interface{}{
-				"filter": true,
+			Metadata: map[string]string{
+				"filter": "true",
 			},
 		}
 
@@ -131,7 +154,7 @@ func (p *PowerShellParser) extractFunctions(content string, result *types.ParseR
 	}
 }
 
-func (p *PowerShellParser) extractClasses(content string, result *types.ParseResult) {
+func (p *PowerShellParser) extractClasses(content string, result *parsing.ParseResult) {
 	// Class declaration (PowerShell 5.0+)
 	classRe := regexp.MustCompile(`(?im)^\s*class\s+(\w+)(?:\s*:\s*([\w,\s]+))?\s*{`)
 
@@ -139,7 +162,7 @@ func (p *PowerShellParser) extractClasses(content string, result *types.ParseRes
 	for _, match := range matches {
 		name := content[match[2]:match[3]]
 
-		inheritance := ""
+			inheritance := ""
 		if match[4] != -1 {
 			inheritance = content[match[4]:match[5]]
 		}
@@ -151,12 +174,12 @@ func (p *PowerShellParser) extractClasses(content string, result *types.ParseRes
 			sig += " : " + inheritance
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeClass,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindClass,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  sig,
 		}
 
@@ -168,10 +191,10 @@ func (p *PowerShellParser) extractClasses(content string, result *types.ParseRes
 			for _, parent := range parts {
 				parent = strings.TrimSpace(parent)
 				if parent != "" {
-					result.Relationships = append(result.Relationships, &types.Relationship{
-						Type:       types.RelationshipExtends,
-						SourceName: name,
-						TargetName: parent,
+					result.Relationships = append(result.Relationships, &model.Relationship{
+						Type:       model.RelationshipKindExtends,
+						SourceSymbol: name,
+						TargetSymbol: parent,
 					})
 				}
 			}
@@ -186,12 +209,12 @@ func (p *PowerShellParser) extractClasses(content string, result *types.ParseRes
 		name := content[match[2]:match[3]]
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeEnum,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindEnum,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "enum " + name,
 		}
 
@@ -199,9 +222,9 @@ func (p *PowerShellParser) extractClasses(content string, result *types.ParseRes
 	}
 }
 
-func (p *PowerShellParser) extractVariables(lines []string, result *types.ParseResult) {
+func (p *PowerShellParser) extractVariables(lines []string, result *parsing.ParseResult) {
 	// Script-level variable: $script:VarName or $global:VarName
-	varRe := regexp.MustCompile(`^\s*\$(?:script|global):([A-Z]\w*)\s*=`)
+	varRe := regexp.MustCompile(`^\s*\$(?:script|global):([A-Z]\w*)\s*=\s*`)
 
 	seen := make(map[string]bool)
 
@@ -214,12 +237,12 @@ func (p *PowerShellParser) extractVariables(lines []string, result *types.ParseR
 			}
 			seen[name] = true
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:       "$" + name,
-				Type:       types.SymbolTypeVariable,
-				StartLine:  i + 1,
-				EndLine:    i + 1,
-				Visibility: types.VisibilityPublic,
+				Kind:       model.SymbolKindVariable,
+				File:       "", // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: i + 1}, End: model.Position{Line: i + 1}},
+				Visibility: model.VisibilityPublic,
 				Signature:  "$" + name,
 			}
 

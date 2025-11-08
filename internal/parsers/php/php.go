@@ -4,28 +4,46 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // PHPParser parses PHP source code
 type PHPParser struct {
-	*parser.BaseParser
 }
 
 // NewParser creates a new PHP parser
 func NewParser() *PHPParser {
-	return &PHPParser{
-		BaseParser: parser.NewBaseParser("php", []string{".php"}, 100),
-	}
+	return &PHPParser{}
+}
+
+// Language returns the language identifier (e.g., "php")
+func (p *PHPParser) Language() string {
+	return "php"
+}
+
+// Extensions returns file extensions this parser handles (e.g., [".php"])
+func (p *PHPParser) Extensions() []string {
+	return []string{”.php"}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *PHPParser) Priority() int {
+	return 100
+}
+
+// SupportsFramework checks if parser supports specific framework analysis
+func (p *PHPParser) SupportsFramework(framework string) bool {
+	return false
 }
 
 // Parse parses PHP source code
-func (p *PHPParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       make([]*types.Symbol, 0),
-		Imports:       make([]*types.Import, 0),
-		Relationships: make([]*types.Relationship, 0),
+func (p *PHPParser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols:       make([]*model.Symbol, 0),
+		Imports:       make([]*model.Import, 0),
+		Relationships: make([]*model.Relationship, 0),
 		Metadata:      make(map[string]interface{}),
 	}
 
@@ -49,7 +67,7 @@ func (p *PHPParser) Parse(content []byte, filePath string) (*types.ParseResult, 
 	return result, nil
 }
 
-func (p *PHPParser) extractNamespace(lines []string, result *types.ParseResult) {
+func (p *PHPParser) extractNamespace(lines []string, result *parsing.ParseResult) {
 	nsRe := regexp.MustCompile(`^\s*namespace\s+([\w\\]+)\s*;`)
 
 	for i, line := range lines {
@@ -57,12 +75,12 @@ func (p *PHPParser) extractNamespace(lines []string, result *types.ParseResult) 
 			namespace := matches[1]
 			result.Metadata["namespace"] = namespace
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:       namespace,
-				Type:       types.SymbolTypeNamespace,
-				StartLine:  i + 1,
-				EndLine:    i + 1,
-				Visibility: types.VisibilityPublic,
+				Kind:       model.SymbolKindNamespace,
+				File:       "", // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: i + 1}, End: model.Position{Line: i + 1}},
+				Visibility: model.VisibilityPublic,
 				Signature:  "namespace " + namespace,
 			}
 			result.Symbols = append(result.Symbols, symbol)
@@ -71,7 +89,7 @@ func (p *PHPParser) extractNamespace(lines []string, result *types.ParseResult) 
 	}
 }
 
-func (p *PHPParser) extractUses(lines []string, result *types.ParseResult) {
+func (p *PHPParser) extractUses(lines []string, result *parsing.ParseResult) {
 	useRe := regexp.MustCompile(`^\s*use\s+([\w\\]+)(?:\s+as\s+(\w+))?\s*;`)
 
 	for i, line := range lines {
@@ -79,10 +97,12 @@ func (p *PHPParser) extractUses(lines []string, result *types.ParseResult) {
 			importPath := matches[1]
 			// alias := matches[2] // Declared and not used
 
-			imp := &types.Import{
-				Source:     importPath,
-				LineNumber: i + 1,
-				// Alias field no longer exists in types.Import
+			im := &model.Import{
+				Path: importPath,
+				Range: model.Range{
+					Start: model.Position{Line: i + 1},
+					End:   model.Position{Line: i + 1},
+				},
 			}
 
 			// If alias is still needed, it would need to be stored elsewhere,
@@ -94,7 +114,7 @@ func (p *PHPParser) extractUses(lines []string, result *types.ParseResult) {
 	}
 }
 
-func (p *PHPParser) extractTypes(content string, result *types.ParseResult) {
+func (p *PHPParser) extractTypes(content string, result *parsing.ParseResult) {
 	// Class, interface, trait, enum (PHP 8.1+)
 	typeRe := regexp.MustCompile(`(?m)^\s*(abstract|final)?\s*(class|interface|trait|enum)\s+(\w+)(?:\s+extends\s+([\w\\]+))?(?:\s+implements\s+([\w\\,\s]+))?`)
 
@@ -121,18 +141,18 @@ func (p *PHPParser) extractTypes(content string, result *types.ParseResult) {
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
 		// Determine symbol type
-		var symbolType types.SymbolType
+		var symbolKind model.SymbolKind
 		switch typeKind {
 		case "class":
-			symbolType = types.SymbolTypeClass
+			symbolKind = model.SymbolKindClass
 		case "interface":
-			symbolType = types.SymbolTypeInterface
+			symbolKind = model.SymbolKindInterface
 		case "trait":
-			symbolType = types.SymbolTypeInterface // Treat trait as interface
+			symbolKind = model.SymbolKindInterface // Treat trait as interface
 		case "enum":
-			symbolType = types.SymbolTypeEnum
+			symbolKind = model.SymbolKindEnum
 		default:
-			symbolType = types.SymbolTypeClass
+			symbolKind = model.SymbolKindClass
 		}
 
 		sig := typeKind + " " + name
@@ -143,17 +163,17 @@ func (p *PHPParser) extractTypes(content string, result *types.ParseResult) {
 			sig += " implements " + implementsClause
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       symbolType,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       symbolKind,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  sig,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -162,27 +182,27 @@ func (p *PHPParser) extractTypes(content string, result *types.ParseResult) {
 
 		// Add relationships
 		if extendsClause != "" {
-			result.Relationships = append(result.Relationships, &types.Relationship{
-				Type:       types.RelationshipExtends,
-				SourceName: name,
-				TargetName: extendsClause,
+			result.Relationships = append(result.Relationships, &model.Relationship{
+				Type:       model.RelationshipKindExtends,
+				SourceSymbol: name,
+				TargetSymbol: extendsClause,
 			})
 		}
 
 		if implementsClause != "" {
 			for _, iface := range strings.Split(implementsClause, ",") {
 				iface = strings.TrimSpace(iface)
-				result.Relationships = append(result.Relationships, &types.Relationship{
-					Type:       types.RelationshipImplements,
-					SourceName: name,
-					TargetName: iface,
+				result.Relationships = append(result.Relationships, &model.Relationship{
+					Type:       model.RelationshipKindImplements,
+					SourceSymbol: name,
+					TargetSymbol: iface,
 				})
 			}
 		}
 	}
 }
 
-func (p *PHPParser) extractFunctions(content string, result *types.ParseResult) {
+func (p *PHPParser) extractFunctions(content string, result *parsing.ParseResult) {
 	// Function or method declaration
 	funcRe := regexp.MustCompile(`(?m)^\s*(public|private|protected)?\s*(static|abstract|final)?\s*function\s+(&)?(\w+)\s*\(([^)]*)\)(?:\s*:\s*([\w\\|?]+))?`)
 
@@ -226,22 +246,22 @@ func (p *PHPParser) extractFunctions(content string, result *types.ParseResult) 
 		}
 
 		// Determine if method or function based on visibility
-		symbolType := types.SymbolTypeFunction
+		symbolKind := model.SymbolKindFunction
 		if visibility != "" {
-			symbolType = types.SymbolTypeMethod
+			symbolKind = model.SymbolKindMethod
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       symbolType,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       symbolKind,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -275,17 +295,17 @@ func (p *PHPParser) extractFunctions(content string, result *types.ParseResult) 
 			sig = propType + " $" + name
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeProperty,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindProperty,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -294,15 +314,15 @@ func (p *PHPParser) extractFunctions(content string, result *types.ParseResult) 
 	}
 }
 
-func (p *PHPParser) parseVisibility(vis string) types.Visibility {
+func (p *PHPParser) parseVisibility(vis string) model.Visibility {
 	switch strings.ToLower(vis) {
 	case "public":
-		return types.VisibilityPublic
+		return model.VisibilityPublic
 	case "private":
-		return types.VisibilityPrivate
+		return model.VisibilityPrivate
 	case "protected":
-		return types.VisibilityProtected
+		return model.VisibilityProtected
 	default:
-		return types.VisibilityPublic // PHP default is public
+		return model.VisibilityPublic // PHP default is public
 	}
 }

@@ -4,28 +4,46 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // KotlinParser parses Kotlin source code
 type KotlinParser struct {
-	*parser.BaseParser
 }
 
 // NewParser creates a new Kotlin parser
 func NewParser() *KotlinParser {
-	return &KotlinParser{
-		BaseParser: parser.NewBaseParser("kotlin", []string{".kt", ".kts"}, 100),
-	}
+	return &KotlinParser{}
+}
+
+// Language returns the language identifier (e.g., "kotlin")
+func (p *KotlinParser) Language() string {
+	return "kotlin"
+}
+
+// Extensions returns file extensions this parser handles (e.g., [".kt", ".kts"])
+func (p *KotlinParser) Extensions() []string {
+	return []string{".kt", ".kts"}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *KotlinParser) Priority() int {
+	return 100
+}
+
+// SupportsFramework checks if parser supports specific framework analysis
+func (p *KotlinParser) SupportsFramework(framework string) bool {
+	return false
 }
 
 // Parse parses Kotlin source code
-func (p *KotlinParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       make([]*types.Symbol, 0),
-		Imports:       make([]*types.Import, 0),
-		Relationships: make([]*types.Relationship, 0),
+func (p *KotlinParser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols:       make([]*model.Symbol, 0),
+		Imports:       make([]*model.Import, 0),
+		Relationships: make([]*model.Relationship, 0),
 		Metadata:      make(map[string]interface{}),
 	}
 
@@ -52,19 +70,19 @@ func (p *KotlinParser) Parse(content []byte, filePath string) (*types.ParseResul
 	return result, nil
 }
 
-func (p *KotlinParser) extractPackage(lines []string, result *types.ParseResult) {
+func (p *KotlinParser) extractPackage(lines []string, result *parsing.ParseResult) {
 	packageRe := regexp.MustCompile(`^\s*package\s+([\w.]+)`)
 
 	for i, line := range lines {
 		if matches := packageRe.FindStringSubmatch(line); matches != nil {
 			result.Metadata["package"] = matches[1]
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:       matches[1],
-				Type:       types.SymbolTypePackage,
-				StartLine:  i + 1,
-				EndLine:    i + 1,
-				Visibility: types.VisibilityPublic,
+				Kind:       model.SymbolKindPackage,
+				File:       "", // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: i + 1}, End: model.Position{Line: i + 1}},
+				Visibility: model.VisibilityPublic,
 				Signature:  "package " + matches[1],
 			}
 			result.Symbols = append(result.Symbols, symbol)
@@ -73,7 +91,7 @@ func (p *KotlinParser) extractPackage(lines []string, result *types.ParseResult)
 	}
 }
 
-func (p *KotlinParser) extractImports(lines []string, result *types.ParseResult) {
+func (p *KotlinParser) extractImports(lines []string, result *parsing.ParseResult) {
 	importRe := regexp.MustCompile(`^\s*import\s+([\w.*]+)(?:\s+as\s+(\w+))?`)
 
 	for i, line := range lines {
@@ -81,9 +99,12 @@ func (p *KotlinParser) extractImports(lines []string, result *types.ParseResult)
 			importPath := matches[1]
 			// alias := matches[2] // Declared and not used
 
-			imp := &types.Import{
-				Source:     importPath,
-				LineNumber: i + 1,
+			imp := &model.Import{
+				Path: importPath,
+				Range: model.Range{
+					Start: model.Position{Line: i + 1},
+					End:   model.Position{Line: i + 1},
+				},
 			}
 
 			// Alias field no longer exists in types.Import
@@ -95,9 +116,10 @@ func (p *KotlinParser) extractImports(lines []string, result *types.ParseResult)
 	}
 }
 
-func (p *KotlinParser) extractTypes(content string, result *types.ParseResult) {
+func (p *KotlinParser) extractTypes(content string, result *parsing.ParseResult) {
 	// Class, interface, object, data class, sealed class, enum class
-	typeRe := regexp.MustCompile(`(?m)^\s*(?:@[\w.()]+\s+)*(public|private|protected|internal)?\s*(abstract|open|final|sealed|data|enum|annotation)?\s*(class|interface|object)\s+(\w+)(?:\s*:\s*([\w<>,\s()]+))?`)
+	typeRe := regexp.MustCompile(`(?m)^\s*(?:@[\w.()]+)?\s*(?:abstract|open|final|sealed|data|enum|annotation)?\s*(class|interface|object)\s+(\w+)(?:\s*:\s*([\w<>,
+()]+))?`)
 
 	matches := typeRe.FindAllStringSubmatchIndex(content, -1)
 	for _, match := range matches {
@@ -122,20 +144,20 @@ func (p *KotlinParser) extractTypes(content string, result *types.ParseResult) {
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
 		// Determine symbol type
-		var symbolType types.SymbolType
+		var symbolKind model.SymbolKind
 		switch typeKind {
 		case "class":
-			symbolType = types.SymbolTypeClass
+			symbolKind = model.SymbolKindClass
 		case "interface":
-			symbolType = types.SymbolTypeInterface
+			symbolKind = model.SymbolKindInterface
 		case "object":
-			symbolType = types.SymbolTypeClass // Singleton object
+			symbolKind = model.SymbolKindClass // Singleton object
 		default:
-			symbolType = types.SymbolTypeClass
+			symbolKind = model.SymbolKindClass
 		}
 
 		if modifier == "enum" {
-			symbolType = types.SymbolTypeEnum
+			symbolKind = model.SymbolKindEnum
 		}
 
 		sig := ""
@@ -147,17 +169,17 @@ func (p *KotlinParser) extractTypes(content string, result *types.ParseResult) {
 			sig += " : " + inheritance
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       symbolType,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       symbolKind,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -176,10 +198,10 @@ func (p *KotlinParser) extractTypes(content string, result *types.ParseResult) {
 				}
 
 				if part != "" {
-					result.Relationships = append(result.Relationships, &types.Relationship{
-						Type:       types.RelationshipExtends,
-						SourceName: name,
-						TargetName: part,
+					result.Relationships = append(result.Relationships, &model.Relationship{
+						Type:       model.RelationshipKindExtends,
+						SourceSymbol: name,
+						TargetSymbol: part,
 					})
 				}
 			}
@@ -187,9 +209,9 @@ func (p *KotlinParser) extractTypes(content string, result *types.ParseResult) {
 	}
 }
 
-func (p *KotlinParser) extractFunctions(content string, result *types.ParseResult) {
+func (p *KotlinParser) extractFunctions(content string, result *parsing.ParseResult) {
 	// Function declaration
-	funcRe := regexp.MustCompile(`(?m)^\s*(?:@[\w.()]+\s+)*(public|private|protected|internal)?\s*(override|open|inline|suspend|operator|infix)?\s*fun\s+(?:<[^>]+>\s+)?(\w+)\s*\(([^)]*)\)(?:\s*:\s*([\w<>?]+))?`)
+	funcRe := regexp.MustCompile(`(?m)^\s*(?:@[\w.()]+)?\s*(?:override|open|inline|suspend|operator|infix)?\s*fun\s+(?:<[^>]+>\s+)?(\w+)\s*\(([^)]*)\)(?:\s*:\s*([\w<>?]+))?`)
 
 	matches := funcRe.FindAllStringSubmatchIndex(content, -1)
 	for _, match := range matches {
@@ -221,17 +243,17 @@ func (p *KotlinParser) extractFunctions(content string, result *types.ParseResul
 			sig += ": " + returnType
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeFunction,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindFunction,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -240,7 +262,7 @@ func (p *KotlinParser) extractFunctions(content string, result *types.ParseResul
 	}
 }
 
-func (p *KotlinParser) extractProperties(content string, result *types.ParseResult) {
+func (p *KotlinParser) extractProperties(content string, result *parsing.ParseResult) {
 	// Property declaration: val/var
 	propRe := regexp.MustCompile(`(?m)^\s*(public|private|protected|internal)?\s*(override|const|lateinit)?\s*(val|var)\s+(\w+)\s*:\s*([\w<>?]+)`)
 
@@ -264,17 +286,17 @@ func (p *KotlinParser) extractProperties(content string, result *types.ParseResu
 
 		sig := valOrVar + " " + name + ": " + propType
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeProperty,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindProperty,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -283,17 +305,17 @@ func (p *KotlinParser) extractProperties(content string, result *types.ParseResu
 	}
 }
 
-func (p *KotlinParser) parseVisibility(vis string) types.Visibility {
+func (p *KotlinParser) parseVisibility(vis string) model.Visibility {
 	switch strings.ToLower(vis) {
 	case "public":
-		return types.VisibilityPublic
+		return model.VisibilityPublic
 	case "private":
-		return types.VisibilityPrivate
+		return model.VisibilityPrivate
 	case "protected":
-		return types.VisibilityProtected
+		return model.VisibilityProtected
 	case "internal":
-		return types.VisibilityInternal
+		return model.VisibilityInternal
 	default:
-		return types.VisibilityPublic // Kotlin default is public
+		return model.VisibilityPublic // Kotlin default is public
 	}
 }

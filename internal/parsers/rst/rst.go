@@ -4,28 +4,46 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // ReStructuredTextParser parses reStructuredText documentation files
 type ReStructuredTextParser struct {
-	*parser.BaseParser
 }
 
 // NewParser creates a new reStructuredText parser
 func NewParser() *ReStructuredTextParser {
-	return &ReStructuredTextParser{
-		BaseParser: parser.NewBaseParser("rst", []string{".rst", ".rest"}, 50),
-	}
+	return &ReStructuredTextParser{}
+}
+
+// Language returns the language identifier (e.g., "rst")
+func (p *ReStructuredTextParser) Language() string {
+	return "rst"
+}
+
+// Extensions returns file extensions this parser handles (e.g., [".rst", ".rest"])
+func (p *ReStructuredTextParser) Extensions() []string {
+	return []string{".rst", ".rest"}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *ReStructuredTextParser) Priority() int {
+	return 50
+}
+
+// SupportsFramework checks if parser supports specific framework analysis
+func (p *ReStructuredTextParser) SupportsFramework(framework string) bool {
+	return false
 }
 
 // Parse parses reStructuredText content
-func (p *ReStructuredTextParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       make([]*types.Symbol, 0),
-		Imports:       make([]*types.Import, 0),
-		Relationships: make([]*types.Relationship, 0),
+func (p *ReStructuredTextParser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols:       make([]*model.Symbol, 0),
+		Imports:       make([]*model.Import, 0),
+		Relationships: make([]*model.Relationship, 0),
 		Metadata:      make(map[string]interface{}),
 	}
 
@@ -47,7 +65,7 @@ func (p *ReStructuredTextParser) Parse(content []byte, filePath string) (*types.
 	return result, nil
 }
 
-func (p *ReStructuredTextParser) extractSections(lines []string, result *types.ParseResult) {
+func (p *ReStructuredTextParser) extractSections(lines []string, result *parsing.ParseResult) {
 	// RST headers: underline with =, -, ~, etc.
 	// Title
 	// =====
@@ -70,16 +88,16 @@ func (p *ReStructuredTextParser) extractSections(lines []string, result *types.P
 				if title != "" {
 					level := p.getHeaderLevel(nextLine[0])
 
-					symbol := &types.Symbol{
+					symbol := &model.Symbol{
 						Name:       title,
-						Type:       types.SymbolTypeVariable,
-						StartLine:  i + 1,
-						EndLine:    i + 1,
-						Visibility: types.VisibilityPublic,
+						Kind:       model.SymbolKindVariable,
+						File:       "", // File path will be set by the caller
+						Range:      model.Range{Start: model.Position{Line: i + 1}, End: model.Position{Line: i + 1}},
+						Visibility: model.VisibilityPublic,
 						Signature:  title,
-						Metadata: map[string]interface{}{
-							"header":       true,
-							"header_level": level,
+						Metadata: map[string]string{
+							"header":       "true",
+							"header_level": string(level),
 						},
 					}
 
@@ -103,17 +121,17 @@ func (p *ReStructuredTextParser) extractSections(lines []string, result *types.P
 					if title != "" {
 						level := p.getHeaderLevel(prevLine[0])
 
-						symbol := &types.Symbol{
+						symbol := &model.Symbol{
 							Name:       title,
-							Type:       types.SymbolTypeVariable,
-							StartLine:  i + 1,
-							EndLine:    i + 1,
-							Visibility: types.VisibilityPublic,
+							Kind:       model.SymbolKindVariable,
+							File:       "", // File path will be set by the caller
+							Range:      model.Range{Start: model.Position{Line: i + 1}, End: model.Position{Line: i + 1}},
+							Visibility: model.VisibilityPublic,
 							Signature:  title,
-							Metadata: map[string]interface{}{
-								"header":       true,
-								"header_level": level,
-								"overline":     true,
+							Metadata: map[string]string{
+								"header":       "true",
+								"header_level": string(level),
+								"overline":     "true",
 							},
 						}
 
@@ -165,7 +183,7 @@ func (p *ReStructuredTextParser) getHeaderLevel(char byte) int {
 	return 3 // Default
 }
 
-func (p *ReStructuredTextParser) extractDirectives(lines []string, result *types.ParseResult) {
+func (p *ReStructuredTextParser) extractDirectives(lines []string, result *parsing.ParseResult) {
 	// Directives: .. directive:: content
 	directiveRe := regexp.MustCompile(`^\.\.\s+([\w-]+)::\s*(.*)`)
 
@@ -184,14 +202,14 @@ func (p *ReStructuredTextParser) extractDirectives(lines []string, result *types
 				name = directive + ": " + content
 			}
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:       name,
-				Type:       types.SymbolTypeFunction,
-				StartLine:  i + 1,
-				EndLine:    i + 1,
-				Visibility: types.VisibilityPublic,
+				Kind:       model.SymbolKindFunction,
+				File:       "", // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: i + 1}, End: model.Position{Line: i + 1}},
+				Visibility: model.VisibilityPublic,
 				Signature:  ".. " + directive + "::",
-				Metadata: map[string]interface{}{
+				Metadata: map[string]string{
 					"directive": directive,
 				},
 			}
@@ -201,7 +219,7 @@ func (p *ReStructuredTextParser) extractDirectives(lines []string, result *types
 	}
 }
 
-func (p *ReStructuredTextParser) extractReferences(lines []string, result *types.ParseResult) {
+func (p *ReStructuredTextParser) extractReferences(lines []string, result *parsing.ParseResult) {
 	// Reference definitions: .. _label: or .. _label:
 	refRe := regexp.MustCompile(`^\.\.\s+_([^:]+):\s*(.*)`)
 
@@ -215,15 +233,15 @@ func (p *ReStructuredTextParser) extractReferences(lines []string, result *types
 				sig += ": " + target
 			}
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:       label,
-				Type:       types.SymbolTypeConstant,
-				StartLine:  i + 1,
-				EndLine:    i + 1,
-				Visibility: types.VisibilityPublic,
+				Kind:       model.SymbolKindConstant,
+				File:       "", // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: i + 1}, End: model.Position{Line: i + 1}},
+				Visibility: model.VisibilityPublic,
 				Signature:  sig,
-				Metadata: map[string]interface{}{
-					"reference": true,
+				Metadata: map[string]string{
+					"reference": "true",
 				},
 			}
 

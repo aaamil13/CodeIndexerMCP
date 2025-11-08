@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/core"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 )
 
 // Server is the MCP server
@@ -605,7 +605,7 @@ func (s *Server) registerTool(tool *Tool) {
 // Tool handlers
 
 func (s *Server) handleSearchSymbols(params json.RawMessage) (interface{}, error) {
-	var opts types.SearchOptions
+	var opts model.SearchOptions
 	if err := json.Unmarshal(params, &opts); err != nil {
 		return nil, err
 	}
@@ -729,7 +729,7 @@ func (s *Server) handleListFiles(params json.RawMessage) (interface{}, error) {
 
 	// Filter by language if specified
 	if req.Language != "" {
-		filtered := []*types.File{}
+		filtered := []*model.File{}
 		for _, file := range files {
 			if file.Language == req.Language {
 				filtered = append(filtered, file)
@@ -884,18 +884,18 @@ func (s *Server) handleSimulateChange(params json.RawMessage) (interface{}, erro
 	}
 
 	// Parse change type
-	var changeType types.ChangeType
+	var changeType model.ChangeType
 	switch req.ChangeType {
 	case "add":
-		changeType = types.ChangeTypeAdd
+		changeType = model.ChangeTypeAdd
 	case "modify":
-		changeType = types.ChangeTypeModify
+		changeType = model.ChangeTypeModify
 	case "delete":
-		changeType = types.ChangeTypeDelete
+		changeType = model.ChangeTypeDelete
 	case "rename":
-		changeType = types.ChangeTypeRename
+		changeType = model.ChangeTypeRename
 	case "move":
-		changeType = types.ChangeTypeMove
+		changeType = model.ChangeTypeMove
 	default:
 		return nil, fmt.Errorf("invalid change type: %s (must be: add, modify, delete, rename, move)", req.ChangeType)
 	}

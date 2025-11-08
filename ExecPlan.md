@@ -2674,5 +2674,3 @@ params := ge.parseParametersFromNode(paramsNode, source)
 | Memory Usage | 380MB | 45MB | 8.4x less |
 
 **Забележка:** Подобренията #1, #2, #5 директно влияят на тези метрики.
-
-КРАЙ, очаква въпроси

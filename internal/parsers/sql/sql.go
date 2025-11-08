@@ -4,29 +4,46 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // SQLParser parses SQL source code
 type SQLParser struct {
-	*parser.BaseParser
 }
 
 // NewParser creates a new SQL parser
 func NewParser() *SQLParser {
-	return &SQLParser{
-		BaseParser: parser.NewBaseParser("sql", []string{".sql"}, 100),
-	}
+	return &SQLParser{}
+}
+
+// Language returns the language identifier (e.g., "sql")
+func (p *SQLParser) Language() string {
+	return "sql"
+}
+
+// Extensions returns file extensions this parser handles (e.g., [".sql"])
+func (p *SQLParser) Extensions() []string {
+	return []string{".sql"}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *SQLParser) Priority() int {
+	return 100
+}
+
+// SupportsFramework checks if parser supports specific framework analysis
+func (p *SQLParser) SupportsFramework(framework string) bool {
+	return false
 }
 
 // Parse parses SQL source code
-func (p *SQLParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       make([]*types.Symbol, 0),
-		Imports:       make([]*types.Import, 0),
-		Relationships: make([]*types.Relationship, 0),
-		Metadata:      make(map[string]interface{}),
+func (p *SQLParser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols:  make([]*model.Symbol, 0),
+		Imports:  make([]*model.Import, 0),
+		Metadata: make(map[string]interface{}),
 	}
 
 	contentStr := string(content)
@@ -56,17 +73,18 @@ func (p *SQLParser) Parse(content []byte, filePath string) (*types.ParseResult, 
 
 func (p *SQLParser) removeComments(content string) string {
 	// Remove single-line comments
-	singleLineRe := regexp.MustCompile(`--[^\n]*`)
+	singleLineRe := regexp.MustCompile(`--[^
+]*`)
 	content = singleLineRe.ReplaceAllString(content, "")
 
 	// Remove multi-line comments
-	multiLineRe := regexp.MustCompile(`/\*[\s\S]*?\*/`)
+	multiLineRe := regexp.MustCompile(`/\[\s\S]*?\*/`)
 	content = multiLineRe.ReplaceAllString(content, "")
 
 	return content
 }
 
-func (p *SQLParser) extractTables(content string, result *types.ParseResult) {
+func (p *SQLParser) extractTables(content string, result *parsing.ParseResult) {
 	// CREATE TABLE
 	tableRe := regexp.MustCompile(`(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:[\w.]+\.)?(\w+)\s*\(`)
 
@@ -75,15 +93,15 @@ func (p *SQLParser) extractTables(content string, result *types.ParseResult) {
 		name := content[match[2]:match[3]]
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeClass, // Use class for tables
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindClass, // Use class for tables
+			File:       "",                    // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "CREATE TABLE " + name,
-			Metadata: map[string]interface{}{
-				"table": true,
+			Metadata: map[string]string{
+				"table": "true",
 			},
 		}
 
@@ -91,7 +109,7 @@ func (p *SQLParser) extractTables(content string, result *types.ParseResult) {
 	}
 }
 
-func (p *SQLParser) extractViews(content string, result *types.ParseResult) {
+func (p *SQLParser) extractViews(content string, result *parsing.ParseResult) {
 	// CREATE VIEW
 	viewRe := regexp.MustCompile(`(?i)CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:[\w.]+\.)?(\w+)\s+AS`)
 
@@ -100,15 +118,15 @@ func (p *SQLParser) extractViews(content string, result *types.ParseResult) {
 		name := content[match[2]:match[3]]
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeClass,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindClass,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "CREATE VIEW " + name,
-			Metadata: map[string]interface{}{
-				"view": true,
+			Metadata: map[string]string{
+				"view": "true",
 			},
 		}
 
@@ -116,7 +134,7 @@ func (p *SQLParser) extractViews(content string, result *types.ParseResult) {
 	}
 }
 
-func (p *SQLParser) extractProcedures(content string, result *types.ParseResult) {
+func (p *SQLParser) extractProcedures(content string, result *parsing.ParseResult) {
 	// CREATE PROCEDURE / CREATE PROC
 	procRe := regexp.MustCompile(`(?i)CREATE\s+(?:OR\s+REPLACE\s+)?(?:PROCEDURE|PROC)\s+(?:[\w.]+\.)?(\w+)\s*(?:\(([^)]*)\))?`)
 
@@ -135,15 +153,15 @@ func (p *SQLParser) extractProcedures(content string, result *types.ParseResult)
 			sig += "(" + params + ")"
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeFunction,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindFunction,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  sig,
-			Metadata: map[string]interface{}{
-				"procedure": true,
+			Metadata: map[string]string{
+				"procedure": "true",
 			},
 		}
 
@@ -151,7 +169,7 @@ func (p *SQLParser) extractProcedures(content string, result *types.ParseResult)
 	}
 }
 
-func (p *SQLParser) extractFunctions(content string, result *types.ParseResult) {
+func (p *SQLParser) extractFunctions(content string, result *parsing.ParseResult) {
 	// CREATE FUNCTION
 	funcRe := regexp.MustCompile(`(?i)CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:[\w.]+\.)?(\w+)\s*\(([^)]*)\)\s*RETURNS?\s+([\w\s()]+)`)
 
@@ -165,12 +183,12 @@ func (p *SQLParser) extractFunctions(content string, result *types.ParseResult) 
 
 		sig := "CREATE FUNCTION " + name + "(" + params + ") RETURNS " + returnType
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeFunction,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindFunction,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  sig,
 		}
 
@@ -178,7 +196,7 @@ func (p *SQLParser) extractFunctions(content string, result *types.ParseResult) 
 	}
 }
 
-func (p *SQLParser) extractTriggers(content string, result *types.ParseResult) {
+func (p *SQLParser) extractTriggers(content string, result *parsing.ParseResult) {
 	// CREATE TRIGGER
 	triggerRe := regexp.MustCompile(`(?i)CREATE\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+(\w+)`)
 
@@ -187,15 +205,15 @@ func (p *SQLParser) extractTriggers(content string, result *types.ParseResult) {
 		name := content[match[2]:match[3]]
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeFunction,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
-			Visibility: types.VisibilityPublic,
+			Kind:       model.SymbolKindFunction,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+			Visibility: model.VisibilityPublic,
 			Signature:  "CREATE TRIGGER " + name,
-			Metadata: map[string]interface{}{
-				"trigger": true,
+			Metadata: map[string]string{
+				"trigger": "true",
 			},
 		}
 

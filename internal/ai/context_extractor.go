@@ -77,17 +77,17 @@ func (ce *ContextExtractor) ExtractContext(symbolName string, depth int) (*CodeC
 	// for _, rel := range relationships {
 	// 	if rel.Type == "calls" { // TODO: use model.RelationshipCalls
 	// 		if rel.FromSymbolID == symbol.ID {
-				// This symbol calls another
-				if callee, err := ce.getSymbolByID(rel.ToSymbolID); err == nil {
-					callees = append(callees, callee)
-				}
-			} else if rel.ToSymbolID == symbol.ID {
-				// Another symbol calls this
-				if caller, err := ce.getSymbolByID(rel.FromSymbolID); err == nil {
-					callers = append(callers, caller)
-				}
-			}
-		}
+	// 			// This symbol calls another
+	// 			if callee, err := ce.getSymbolByID(rel.ToSymbolID); err == nil {
+	// 				callees = append(callees, callee)
+	// 			}
+	// 		} else if rel.ToSymbolID == symbol.ID {
+	// 			// Another symbol calls this
+	// 			if caller, err := ce.getSymbolByID(rel.FromSymbolID); err == nil {
+	// 				callers = append(callers, caller)
+	// 			}
+	// 		}
+	// 	}
 	// }
 
 	// // Get usage examples

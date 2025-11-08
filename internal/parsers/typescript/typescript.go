@@ -4,37 +4,45 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 	// sitter "github.com/smacker/go-tree-sitter"
 	// "github.com/smacker/go-tree-sitter/typescript/typescript"
 )
 
 // TypeScriptParser parses TypeScript/JavaScript using Tree-sitter
 type TypeScriptParser struct {
-	*parser.BaseParser
 	// parser *sitter.Parser
 	// In production, this would have actual Tree-sitter parser instance
 }
 
 // NewTypeScriptParser creates a new TypeScript parser
 func NewTypeScriptParser() *TypeScriptParser {
-	return &TypeScriptParser{
-		BaseParser: parser.NewBaseParser(
-			"typescript",
-			[]string{".ts", ".tsx", ".js", ".jsx"},
-			100, // High priority for Tree-sitter
-		),
-	}
+	return &TypeScriptParser{}
+}
+
+// Language returns the language identifier (e.g., "typescript")
+func (p *TypeScriptParser) Language() string {
+	return "typescript"
+}
+
+// Extensions returns file extensions this parser handles (e.g., [".ts", ".tsx"])
+func (p *TypeScriptParser) Extensions() []string {
+	return []string{".ts", ".tsx", ".js", ".jsx"}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *TypeScriptParser) Priority() int {
+	return 100
 }
 
 // Parse parses TypeScript/JavaScript content
-func (p *TypeScriptParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       make([]*types.Symbol, 0),
-		Imports:       make([]*types.Import, 0),
-		Relationships: make([]*types.Relationship, 0),
-		Metadata:      make(map[string]interface{}),
+func (p *TypeScriptParser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols:  make([]*model.Symbol, 0),
+		Imports:  make([]*model.Import, 0),
+		Metadata: make(map[string]interface{}),
 	}
 
 	// Determine if this is TypeScript or JavaScript
@@ -73,7 +81,7 @@ func (p *TypeScriptParser) Parse(content []byte, filePath string) (*types.ParseR
 }
 
 // simpleExtraction provides basic extraction without Tree-sitter (temporary)
-func (p *TypeScriptParser) simpleExtraction(content []byte, result *types.ParseResult, isTS bool) {
+func (p *TypeScriptParser) simpleExtraction(content []byte, result *parsing.ParseResult, isTS bool) {
 	lines := strings.Split(string(content), "\n")
 
 	for i, line := range lines {
@@ -116,7 +124,7 @@ func (p *TypeScriptParser) simpleExtraction(content []byte, result *types.ParseR
 	}
 }
 
-func (p *TypeScriptParser) extractFunction(line string, lineNum int, result *types.ParseResult) {
+func (p *TypeScriptParser) extractFunction(line string, lineNum int, result *parsing.ParseResult) {
 	// Extract: function name(params): returnType
 	parts := strings.Fields(line)
 	for i, part := range parts {
@@ -124,14 +132,16 @@ func (p *TypeScriptParser) extractFunction(line string, lineNum int, result *typ
 			nameWithParams := parts[i+1]
 			name := strings.Split(nameWithParams, "(")[0]
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:       name,
-				Type:       types.SymbolTypeFunction,
-				StartLine:  lineNum,
-				EndLine:    lineNum,
-				Visibility: types.VisibilityPublic,
+				Kind:       model.SymbolKindFunction,
+				File:       "", // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+				Visibility: model.VisibilityPublic,
 				Signature:  line,
-				IsExported: strings.HasPrefix(line, "export"),
+				Metadata: map[string]string{
+					"is_exported": fmt.Sprintf("%t", strings.HasPrefix(line, "export")),
+				},
 			}
 
 			result.Symbols = append(result.Symbols, symbol)
@@ -140,7 +150,7 @@ func (p *TypeScriptParser) extractFunction(line string, lineNum int, result *typ
 	}
 }
 
-func (p *TypeScriptParser) extractArrowFunction(line string, lineNum int, result *types.ParseResult) {
+func (p *TypeScriptParser) extractArrowFunction(line string, lineNum int, result *parsing.ParseResult) {
 	// Extract: const name = (params) => { }
 	if strings.Contains(line, "const ") || strings.Contains(line, "let ") {
 		parts := strings.Split(line, "=")
@@ -148,14 +158,16 @@ func (p *TypeScriptParser) extractArrowFunction(line string, lineNum int, result
 			namePart := strings.TrimSpace(parts[0])
 			name := strings.Fields(namePart)[len(strings.Fields(namePart))-1]
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:       name,
-				Type:       types.SymbolTypeFunction,
-				StartLine:  lineNum,
-				EndLine:    lineNum,
-				Visibility: types.VisibilityPublic,
+				Kind:       model.SymbolKindFunction,
+				File:       "", // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+				Visibility: model.VisibilityPublic,
 				Signature:  line,
-				IsExported: strings.HasPrefix(line, "export"),
+				Metadata: map[string]string{
+					"is_exported": fmt.Sprintf("%t", strings.HasPrefix(line, "export")),
+				},
 			}
 
 			result.Symbols = append(result.Symbols, symbol)
@@ -163,21 +175,23 @@ func (p *TypeScriptParser) extractArrowFunction(line string, lineNum int, result
 	}
 }
 
-func (p *TypeScriptParser) extractClass(line string, lineNum int, result *types.ParseResult) {
+func (p *TypeScriptParser) extractClass(line string, lineNum int, result *parsing.ParseResult) {
 	parts := strings.Fields(line)
 	for i, part := range parts {
 		if part == "class" && i+1 < len(parts) {
 			name := parts[i+1]
 			name = strings.TrimSuffix(name, "{")
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:       name,
-				Type:       types.SymbolTypeClass,
-				StartLine:  lineNum,
-				EndLine:    lineNum,
-				Visibility: types.VisibilityPublic,
+				Kind:       model.SymbolKindClass,
+				File:       "", // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+				Visibility: model.VisibilityPublic,
 				Signature:  line,
-				IsExported: strings.HasPrefix(line, "export"),
+				Metadata: map[string]string{
+					"is_exported": fmt.Sprintf("%t", strings.HasPrefix(line, "export")),
+				},
 			}
 
 			result.Symbols = append(result.Symbols, symbol)
@@ -186,21 +200,23 @@ func (p *TypeScriptParser) extractClass(line string, lineNum int, result *types.
 	}
 }
 
-func (p *TypeScriptParser) extractInterface(line string, lineNum int, result *types.ParseResult) {
+func (p *TypeScriptParser) extractInterface(line string, lineNum int, result *parsing.ParseResult) {
 	parts := strings.Fields(line)
 	for i, part := range parts {
 		if part == "interface" && i+1 < len(parts) {
 			name := parts[i+1]
 			name = strings.TrimSuffix(name, "{")
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:       name,
-				Type:       types.SymbolTypeInterface,
-				StartLine:  lineNum,
-				EndLine:    lineNum,
-				Visibility: types.VisibilityPublic,
+				Kind:       model.SymbolKindInterface,
+				File:       "", // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+				Visibility: model.VisibilityPublic,
 				Signature:  line,
-				IsExported: true, // Interfaces are always exported in TS
+				Metadata: map[string]string{
+					"is_exported": "true", // Interfaces are always exported in TS
+				},
 			}
 
 			result.Symbols = append(result.Symbols, symbol)
@@ -209,21 +225,23 @@ func (p *TypeScriptParser) extractInterface(line string, lineNum int, result *ty
 	}
 }
 
-func (p *TypeScriptParser) extractType(line string, lineNum int, result *types.ParseResult) {
+func (p *TypeScriptParser) extractType(line string, lineNum int, result *parsing.ParseResult) {
 	parts := strings.Fields(line)
 	for i, part := range parts {
 		if part == "type" && i+1 < len(parts) {
 			name := parts[i+1]
 			name = strings.TrimSuffix(name, "=")
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:       name,
-				Type:       types.SymbolTypeClass, // Use class for type aliases
-				StartLine:  lineNum,
-				EndLine:    lineNum,
-				Visibility: types.VisibilityPublic,
+				Kind:       model.SymbolKindClass, // Use class for type aliases
+				File:       "",                    // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
+				Visibility: model.VisibilityPublic,
 				Signature:  line,
-				IsExported: strings.HasPrefix(line, "export"),
+				Metadata: map[string]string{
+					"is_exported": fmt.Sprintf("%t", strings.HasPrefix(line, "export")),
+				},
 			}
 
 			result.Symbols = append(result.Symbols, symbol)
@@ -232,13 +250,13 @@ func (p *TypeScriptParser) extractType(line string, lineNum int, result *types.P
 	}
 }
 
-func (p *TypeScriptParser) extractImport(line string, lineNum int, result *types.ParseResult) {
+func (p *TypeScriptParser) extractImport(line string, lineNum int, result *parsing.ParseResult) {
 	// Extract: import { something } from 'module'
 	// or: import something from 'module'
 	parts := strings.Split(line, "from")
 	if len(parts) >= 2 {
 		modulePart := strings.TrimSpace(parts[1])
-		modulePath := strings.Trim(modulePart, `'"`)
+		modulePath := strings.Trim(modulePart, `"'`)
 		modulePath = strings.TrimSuffix(modulePath, ";")
 
 		// Extract imported names
@@ -271,11 +289,13 @@ func (p *TypeScriptParser) extractImport(line string, lineNum int, result *types
 			}
 		}
 
-		imp := &types.Import{
-			FileID:        0, // Will be set by indexer
-			Source:        modulePath,
-			ImportedNames: importedNames,
-			LineNumber:    lineNum,
+		imp := &model.Import{
+			Path:    modulePath,
+			Members: importedNames,
+			Range: model.Range{
+				Start: model.Position{Line: lineNum},
+				End:   model.Position{Line: lineNum},
+			},
 		}
 
 		result.Imports = append(result.Imports, imp)
@@ -297,7 +317,7 @@ func (p *TypeScriptParser) SupportsFramework(framework string) bool {
 // TreeSitterExtractor would extract symbols using actual Tree-sitter
 // This is the production implementation template:
 /*
-func (p *TypeScriptParser) extractSymbols(cursor *sitter.TreeCursor, content []byte, result *types.ParseResult) {
+func (p *TypeScriptParser) extractSymbols(cursor *sitter.TreeCursor, content []byte, result *parsing.ParseResult) {
 	node := cursor.CurrentNode()
 
 	switch node.Type() {
@@ -327,7 +347,7 @@ func (p *TypeScriptParser) extractSymbols(cursor *sitter.TreeCursor, content []b
 	}
 }
 
-func (p *TypeScriptParser) handleFunctionDeclaration(node *sitter.Node, content []byte, result *types.ParseResult) {
+func (p *TypeScriptParser) handleFunctionDeclaration(node *sitter.Node, content []byte, result *parsing.ParseResult) {
 	nameNode := node.ChildByFieldName("name")
 	if nameNode == nil {
 		return
@@ -335,12 +355,11 @@ func (p *TypeScriptParser) handleFunctionDeclaration(node *sitter.Node, content 
 
 	name := nameNode.Content(content)
 
-	symbol := &types.Symbol{
+	symbol := &model.Symbol{
 		Name:       string(name),
-		Type:       types.SymbolTypeFunction,
-		StartLine:  int(node.StartPoint().Row) + 1,
-		EndLine:    int(node.EndPoint().Row) + 1,
-		Visibility: types.VisibilityPublic,
+		Kind:       model.SymbolKindFunction,
+		Range:      model.Range{Start: model.Position{Line: int(node.StartPoint().Row) + 1}, End: model.Position{Line: int(node.EndPoint().Row) + 1}},
+		Visibility: model.VisibilityPublic,
 		Signature:  string(node.Content(content)),
 	}
 

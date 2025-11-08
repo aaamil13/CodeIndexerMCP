@@ -4,28 +4,46 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // JavaParser parses Java source code
 type JavaParser struct {
-	*parser.BaseParser
 }
 
 // NewParser creates a new Java parser
 func NewParser() *JavaParser {
-	return &JavaParser{
-		BaseParser: parser.NewBaseParser("java", []string{".java"}, 100),
-	}
+	return &JavaParser{}
+}
+
+// Language returns the language identifier (e.g., "java")
+func (p *JavaParser) Language() string {
+	return "java"
+}
+
+// Extensions returns file extensions this parser handles (e.g., [".java"])
+func (p *JavaParser) Extensions() []string {
+	return []string{`.java`}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *JavaParser) Priority() int {
+	return 100
+}
+
+// SupportsFramework checks if parser supports specific framework analysis
+func (p *JavaParser) SupportsFramework(framework string) bool {
+	return false
 }
 
 // Parse parses Java source code
-func (p *JavaParser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       make([]*types.Symbol, 0),
-		Imports:       make([]*types.Import, 0),
-		Relationships: make([]*types.Relationship, 0),
+func (p *JavaParser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols:       make([]*model.Symbol, 0),
+		Imports:       make([]*model.Import, 0),
+		Relationships: make([]*model.Relationship, 0),
 		Metadata:      make(map[string]interface{}),
 	}
 
@@ -49,19 +67,19 @@ func (p *JavaParser) Parse(content []byte, filePath string) (*types.ParseResult,
 	return result, nil
 }
 
-func (p *JavaParser) extractPackage(lines []string, result *types.ParseResult) {
+func (p *JavaParser) extractPackage(lines []string, result *parsing.ParseResult) {
 	packageRe := regexp.MustCompile(`^\s*package\s+([\w.]+)\s*;`)
 
 	for i, line := range lines {
-		if matches := packageRe.FindStringSubmatch(line); matches != nil { // Fixed: used packageRe
+		if matches := packageRe.FindStringSubmatch(line); matches != nil {
 			result.Metadata["package"] = matches[1]
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:       matches[1],
-				Type:       types.SymbolTypePackage,
-				StartLine:  i + 1,
-				EndLine:    i + 1,
-				Visibility: types.VisibilityPublic,
+				Kind:       model.SymbolKindPackage,
+				File:       "", // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: i + 1}, End: model.Position{Line: i + 1}},
+				Visibility: model.VisibilityPublic,
 				Signature:  "package " + matches[1],
 			}
 			result.Symbols = append(result.Symbols, symbol)
@@ -70,7 +88,7 @@ func (p *JavaParser) extractPackage(lines []string, result *types.ParseResult) {
 	}
 }
 
-func (p *JavaParser) extractImports(lines []string, result *types.ParseResult) {
+func (p *JavaParser) extractImports(lines []string, result *parsing.ParseResult) {
 	importRe := regexp.MustCompile(`^\s*import\s+(static\s+)?([\w.*]+)\s*;`)
 
 	for i, line := range lines {
@@ -78,9 +96,12 @@ func (p *JavaParser) extractImports(lines []string, result *types.ParseResult) {
 			// isStatic := matches[1] != "" // Declared and not used, removed this line
 			importPath := matches[2]
 
-			imp := &types.Import{
-				Source:     importPath,
-				LineNumber: i + 1,
+			imp := &model.Import{
+				Path: importPath,
+				Range: model.Range{
+					Start: model.Position{Line: i + 1},
+					End:   model.Position{Line: i + 1},
+				},
 			}
 
 			// Alias field no longer exists in types.Import
@@ -91,7 +112,7 @@ func (p *JavaParser) extractImports(lines []string, result *types.ParseResult) {
 	}
 }
 
-func (p *JavaParser) extractTypes(lines []string, content string, result *types.ParseResult) {
+func (p *JavaParser) extractTypes(lines []string, content string, result *parsing.ParseResult) {
 	// Class declaration
 	classRe := regexp.MustCompile(`(?m)^\s*(public|private|protected)?\s*(abstract|final|static)?\s*(class|interface|enum|@interface)\s+(\w+)(?:\s+extends\s+([\w<>,\s]+))?(?:\s+implements\s+([\w<>,\s]+))?`)
 
@@ -124,18 +145,18 @@ func (p *JavaParser) extractTypes(lines []string, content string, result *types.
 		lineNum := strings.Count(content[:match[0]], "\n") + 1
 
 		// Determine symbol type
-		var symbolType types.SymbolType
+		var symbolKind model.SymbolKind
 		switch typeKind {
 		case "class":
-			symbolType = types.SymbolTypeClass
+			symbolKind = model.SymbolKindClass
 		case "interface":
-			symbolType = types.SymbolTypeInterface
+			symbolKind = model.SymbolKindInterface
 		case "enum":
-			symbolType = types.SymbolTypeEnum
+			symbolKind = model.SymbolKindEnum
 		case "@interface":
-			symbolType = types.SymbolTypeInterface // Annotation
+			symbolKind = model.SymbolKindInterface // Annotation
 		default:
-			symbolType = types.SymbolTypeClass
+			symbolKind = model.SymbolKindClass
 		}
 
 		// Build signature
@@ -147,17 +168,17 @@ func (p *JavaParser) extractTypes(lines []string, content string, result *types.
 			sig += " implements " + implementsClause
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       symbolType,
-			StartLine:  lineNum,
-			EndLine:    p.findClosingBrace(lines, lineNum-1),
+			Kind:       symbolKind,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: p.findClosingBrace(lines, lineNum-1)}},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -168,10 +189,10 @@ func (p *JavaParser) extractTypes(lines []string, content string, result *types.
 		if extendsClause != "" {
 			for _, parent := range strings.Split(extendsClause, ",") {
 				parent = strings.TrimSpace(parent)
-				result.Relationships = append(result.Relationships, &types.Relationship{
-					Type:       types.RelationshipExtends,
-					SourceName: name,
-					TargetName: parent,
+				result.Relationships = append(result.Relationships, &model.Relationship{
+					Type:       model.RelationshipKindExtends,
+					SourceSymbol: name,
+					TargetSymbol: parent,
 				})
 			}
 		}
@@ -180,22 +201,22 @@ func (p *JavaParser) extractTypes(lines []string, content string, result *types.
 		if implementsClause != "" {
 			for _, iface := range strings.Split(implementsClause, ",") {
 				iface = strings.TrimSpace(iface)
-				result.Relationships = append(result.Relationships, &types.Relationship{
-					Type:       types.RelationshipImplements,
-					SourceName: name,
-					TargetName: iface,
+				result.Relationships = append(result.Relationships, &model.Relationship{
+					Type:       model.RelationshipKindImplements,
+					SourceSymbol: name,
+					TargetSymbol: iface,
 				})
 			}
 		}
 	}
 }
 
-func (p *JavaParser) extractMembers(lines []string, content string, result *types.ParseResult) {
+func (p *JavaParser) extractMembers(lines []string, content string, result *parsing.ParseResult) {
 	// Method declaration
-	methodRe := regexp.MustCompile(`(?m)^\s*(public|private|protected)?\s*(static|final|abstract|synchronized|native)?\s*([\w<>\[\],\s]+)\s+(\w+)\s*\(([^)]*)\)(?:\s+throws\s+([\w,\s]+))?`)
+	methodRe := regexp.MustCompile(`(?m)^\s*(public|private|protected)?\s*(static|final|abstract|synchronized|native)?\s*([\w<>[\]\s]+)\s+(\w+)\s*\(([^)]*)\)(?:\s+throws\s+([\w,\s]+))?`)
 
 	// Field declaration
-	fieldRe := regexp.MustCompile(`(?m)^\s*(public|private|protected)?\s*(static|final|transient|volatile)?\s*([\w<>\[\],\s]+)\s+(\w+)\s*[=;]`)
+	fieldRe := regexp.MustCompile(`(?m)^\s*(public|private|protected)?\s*(static|final|transient|volatile)?\s*([\w<>[\]\s]+)\s+(\w+)\s*[=;]`)
 
 	// Extract methods
 	methodMatches := methodRe.FindAllStringSubmatchIndex(content, -1)
@@ -240,17 +261,17 @@ func (p *JavaParser) extractMembers(lines []string, content string, result *type
 			sig += " throws " + throwsClause
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeMethod,
-			StartLine:  lineNum,
-			EndLine:    p.findClosingBrace(lines, lineNum-1),
+			Kind:       model.SymbolKindMethod,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: p.findClosingBrace(lines, lineNum-1)}},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -281,17 +302,17 @@ func (p *JavaParser) extractMembers(lines []string, content string, result *type
 			continue
 		}
 
-		symbol := &types.Symbol{
+		symbol := &model.Symbol{
 			Name:       name,
-			Type:       types.SymbolTypeField,
-			StartLine:  lineNum,
-			EndLine:    lineNum,
+			Kind:       model.SymbolKindField,
+			File:       "", // File path will be set by the caller
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: lineNum}},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  fieldType + " " + name,
 		}
 
 		if modifier != "" {
-			symbol.Metadata = map[string]interface{}{
+			symbol.Metadata = map[string]string{
 				"modifier": modifier,
 			}
 		}
@@ -300,16 +321,16 @@ func (p *JavaParser) extractMembers(lines []string, content string, result *type
 	}
 }
 
-func (p *JavaParser) parseVisibility(vis string) types.Visibility {
+func (p *JavaParser) parseVisibility(vis string) model.Visibility {
 	switch strings.ToLower(vis) {
 	case "public":
-		return types.VisibilityPublic
+		return model.VisibilityPublic
 	case "private":
-		return types.VisibilityPrivate
+		return model.VisibilityPrivate
 	case "protected":
-		return types.VisibilityProtected
+		return model.VisibilityProtected
 	default:
-		return types.VisibilityPackage // Java default is package-private
+		return model.VisibilityPackage // Java default is package-private
 	}
 }
 

@@ -1,10 +1,11 @@
 package parsing
 
 import (
-    "fmt"
-    "sync"
-    
-    sitter "github.com/smacker/go-tree-sitter"
+	"fmt"
+	"sync"
+	
+	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 )
 
 type ParseResult struct {
@@ -13,6 +14,12 @@ type ParseResult struct {
     SourceCode  []byte
     RootNode    *sitter.Node
     ParseErrors []ParseError
+    
+    // Higher-level model elements
+    Symbols       []*model.Symbol       `json:"symbols"`
+    Imports       []*model.Import       `json:"imports"`
+    Relationships []*model.Relationship `json:"relationships"`
+    Metadata      map[string]interface{} `json:"metadata"`
 }
 
 type ParseError struct {
@@ -95,7 +102,7 @@ func (ap *ASTProvider) extractErrors(node *sitter.Node, source []byte) []ParseEr
     return errors
 }
 
-func (ap *ASTProvider) ParseIncremental(oldTree *sitter.Tree, language string, newContent []byte, edits []sitter.Edit) (*ParseResult, error) {
+func (ap *ASTProvider) ParseIncremental(oldTree *sitter.Tree, language string, newContent []byte, edits []sitter.EditInput) (*ParseResult, error) {
     grammar, err := ap.grammarManager.GetLanguage(language)
     if err != nil {
         return nil, err

@@ -25,7 +25,7 @@ func (p *CSharpParser) Language() string {
 
 // Extensions returns file extensions this parser handles (e.g., [".cs"])
 func (p *CSharpParser) Extensions() []string {
-	return []string{'.cs'}
+	return []string{".cs"}
 }
 
 // Priority returns parser priority (higher = preferred when multiple parsers match)
@@ -99,10 +99,9 @@ func (p *CSharpParser) extractNamespaces(lines []string, content string, result 
 
 		symbol := &model.Symbol{
 			Name:       name,
-			Kind:       model.SymbolKindNamespace,
-			File:       "", // File path will be set by the caller
-			Range:      model.Range{Start: model.Position{Line: lineNum}, End: p.findClosingBrace(lines, lineNum-1)},
-			Visibility: model.VisibilityPublic,
+			            Kind:       model.SymbolKindNamespace,
+			            File:       "", // File path will be set by the caller
+			            Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: p.findClosingBrace(lines, lineNum-1)}},			Visibility: model.VisibilityPublic,
 			Signature:  "namespace " + name,
 		}
 		result.Symbols = append(result.Symbols, symbol)
@@ -189,10 +188,7 @@ func (p *CSharpParser) extractTypes(lines []string, content string, result *pars
 
 		symbol := &model.Symbol{
 			Name:       name,
-			Kind:       symbolKind,
-			File:       "", // File path will be set by the caller
-			Range:      model.Range{Start: model.Position{Line: lineNum}, End: p.findClosingBrace(lines, lineNum-1)},
-			Visibility: p.parseVisibility(visibility),
+			            Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: p.findClosingBrace(lines, lineNum-1)}},			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}
 
@@ -263,7 +259,7 @@ func (p *CSharpParser) extractMembers(lines []string, content string, result *pa
 			Name:       name,
 			Kind:       model.SymbolKindMethod,
 			File:       "", // File path will be set by the caller
-			Range:      model.Range{Start: model.Position{Line: lineNum}, End: p.findClosingBrace(lines, lineNum-1)},
+			Range:      model.Range{Start: model.Position{Line: lineNum}, End: model.Position{Line: p.findClosingBrace(lines, lineNum-1)}},
 			Visibility: p.parseVisibility(visibility),
 			Signature:  sig,
 		}

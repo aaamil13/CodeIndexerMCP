@@ -25,7 +25,7 @@ func (p *CParser) Language() string {
 
 // Extensions returns file extensions this parser handles (e.g., [".c", ".h"])
 func (p *CParser) Extensions() []string {
-	return []string{'.c', '.h'}
+	return []string{".c", ".h"}
 }
 
 // Priority returns parser priority (higher = preferred when multiple parsers match)

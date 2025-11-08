@@ -9,9 +9,9 @@ import (
 	"syscall"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/core"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/mcp"
 	// "github.com/aaamil13/CodeIndexerMCP/internal/utils" // Removed unused import
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
 
 func main() {
@@ -30,6 +30,7 @@ func run() error {
 	command := os.Args[1]
 
 	// Get project path (current directory by default)
+
 	projectPath := "."
 	if len(os.Args) > 2 {
 		projectPath = os.Args[2]
@@ -117,7 +118,8 @@ func runWatch(projectPath string) error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	<-sigChan
+	<-
+sigChan
 	fmt.Println("\n🛑 Stopping watcher...")
 
 	if err := indexer.StopWatch(); err != nil {
@@ -159,7 +161,8 @@ func runMCP(projectPath string) error {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		<-sigChan
+		<-
+sigChan
 		fmt.Fprintln(os.Stderr, "\nShutting down...")
 		cancel()
 	}()
@@ -184,7 +187,7 @@ func runSearch(projectPath string, query string) error {
 		return err
 	}
 
-	opts := types.SearchOptions{
+	opts := model.SearchOptions{
 		Query: query,
 		Limit: 20,
 	}
@@ -202,11 +205,11 @@ func runSearch(projectPath string, query string) error {
 	fmt.Printf("Found %d symbols:\n\n", len(symbols))
 
 	for _, symbol := range symbols {
-		fmt.Printf("📍 %s (%s)\n", symbol.Name, symbol.Type)
+		fmt.Printf("📍 %s (%s)\n", symbol.Name, symbol.Kind)
 		if symbol.Signature != "" {
 			fmt.Printf("   Signature: %s\n", symbol.Signature)
 		}
-		fmt.Printf("   Location: Line %d-%d\n", symbol.StartLine, symbol.EndLine)
+		fmt.Printf("   Location: Line %d-%d\n", symbol.Range.Start.Line, symbol.Range.End.Line)
 		if symbol.Documentation != "" {
 			fmt.Printf("   Docs: %s\n", truncate(symbol.Documentation, 80))
 		}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/ai"
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/bash"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/c"
@@ -31,8 +32,8 @@ import (
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/sql"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/swift"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/typescript"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 	"github.com/aaamil13/CodeIndexerMCP/internal/utils"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
 )
 
 // Indexer is the main code indexer
@@ -41,7 +42,7 @@ type Indexer struct {
 	db               *database.DB
 	parsers          *parser.Registry
 	ignoreMatcher    *utils.IgnoreMatcher
-	project          *types.Project
+	project          *model.Project
 	logger           *utils.Logger
 	config           *Config
 	watcher          *Watcher
@@ -169,7 +170,7 @@ func (idx *Indexer) Initialize() error {
 
 	if project == nil {
 		// Create new project
-		project = &types.Project{
+		project = &model.Project{
 			Path:          idx.projectPath,
 			Name:          projectName,
 			LanguageStats: make(map[string]int),
@@ -310,7 +311,7 @@ func (idx *Indexer) IndexFile(filePath string) error {
 	// Save to database in transaction
 	err = idx.db.Transaction(func(tx *gosql.Tx) error {
 		// Save file
-		file := &types.File{
+		file := &model.File{
 			ProjectID:    idx.project.ID,
 			Path:         filePath,
 			RelativePath: relPath,
@@ -334,7 +335,7 @@ func (idx *Indexer) IndexFile(filePath string) error {
 
 		// Save symbols
 		for _, symbol := range parseResult.Symbols {
-			symbol.FileID = file.ID
+			symbol.File = file.Path // Set the file path for the symbol
 			if err := idx.db.SaveSymbol(symbol); err != nil { // Use idx.db directly
 				return fmt.Errorf("failed to save symbol %s in file %s: %w", symbol.Name, relPath, err)
 			}
@@ -342,14 +343,15 @@ func (idx *Indexer) IndexFile(filePath string) error {
 
 		// Save imports
 		for _, imp := range parseResult.Imports {
-			imp.FileID = file.ID
+			imp.FilePath = file.Path // Set the file path for the import
 			if err := idx.db.SaveImport(imp); err != nil { // Use idx.db directly
-				return fmt.Errorf("failed to save import %s in file %s: %w", imp.Source, relPath, err)
+				return fmt.Errorf("failed to save import %s in file %s: %w", imp.Path, relPath, err)
 			}
 		}
 
 		// Save relationships
 		for _, rel := range parseResult.Relationships {
+			rel.FilePath = file.Path // Set the file path for the relationship
 			if err := idx.db.SaveRelationship(rel); err != nil { // Use idx.db directly
 				return fmt.Errorf("failed to save relationship in file %s: %w", relPath, err)
 			}
@@ -463,12 +465,12 @@ func (idx *Indexer) indexFiles(files []string) error {
 }
 
 // SearchSymbols searches for symbols
-func (idx *Indexer) SearchSymbols(opts types.SearchOptions) ([]*types.Symbol, error) {
+func (idx *Indexer) SearchSymbols(opts model.SearchOptions) ([]*model.Symbol, error) {
 	return idx.db.SearchSymbols(opts)
 }
 
 // GetFileStructure returns the structure of a file
-func (idx *Indexer) GetFileStructure(filePath string) (*types.FileStructure, error) {
+func (idx *Indexer) GetFileStructure(filePath string) (*model.FileStructure, error) {
 	relPath, err := filepath.Rel(idx.projectPath, filePath)
 	if err != nil {
 		return nil, err
@@ -482,17 +484,17 @@ func (idx *Indexer) GetFileStructure(filePath string) (*types.FileStructure, err
 		return nil, fmt.Errorf("file not found: %s", relPath)
 	}
 
-	symbols, err := idx.db.GetSymbolsByFile(file.ID)
+	symbols, err := idx.db.GetSymbolsByFile(file.Path)
 	if err != nil {
 		return nil, err
 	}
 
-	imports, err := idx.db.GetImportsByFile(file.ID)
+	imports, err := idx.db.GetImportsByFile(file.Path)
 	if err != nil {
 		return nil, err
 	}
 
-	return &types.FileStructure{
+	return &model.FileStructure{
 		FilePath: filePath,
 		Language: file.Language,
 		Symbols:  symbols,
@@ -501,13 +503,13 @@ func (idx *Indexer) GetFileStructure(filePath string) (*types.FileStructure, err
 }
 
 // GetProjectOverview returns project overview
-func (idx *Indexer) GetProjectOverview() (*types.ProjectOverview, error) {
+func (idx *Indexer) GetProjectOverview() (*model.ProjectOverview, error) {
 	stats, err := idx.db.Stats()
 	if err != nil {
 		return nil, err
 	}
 
-	return &types.ProjectOverview{
+	return &model.ProjectOverview{
 		Project:       idx.project,
 		TotalFiles:    stats["files"],
 		TotalSymbols:  stats["symbols"],
@@ -548,7 +550,7 @@ func (idx *Indexer) StopWatch() error {
 }
 
 // GetSymbolDetails returns detailed information about a symbol
-func (idx *Indexer) GetSymbolDetails(symbolName string) (*types.SymbolDetails, error) {
+func (idx *Indexer) GetSymbolDetails(symbolName string) (*model.SymbolDetails, error) {
 	symbol, err := idx.db.GetSymbolByName(symbolName)
 	if err != nil {
 		return nil, err
@@ -557,32 +559,32 @@ func (idx *Indexer) GetSymbolDetails(symbolName string) (*types.SymbolDetails, e
 		return nil, fmt.Errorf("symbol not found: %s", symbolName)
 	}
 
-	file, err := idx.db.GetFile(symbol.FileID)
-	if err != nil {
-		return nil, err
-	}
+	// file, err := idx.db.GetFile(symbol.FileID) // FileID is not directly available in model.Symbol
+	// if err != nil {
+	// 	return nil, err
+	// }
 
 	references, err := idx.db.GetReferencesBySymbol(symbol.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	relationships, err := idx.db.GetRelationshipsForSymbol(symbol.ID)
-	if err != nil {
-		return nil, err
-	}
+	// relationships, err := idx.db.GetRelationshipsForSymbol(symbol.ID) // This method does not exist in database.Manager
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	return &types.SymbolDetails{
+	return &model.SymbolDetails{
 		Symbol:        symbol,
-		File:          file,
+		// File:          file,
 		References:    references,
-		Relationships: relationships,
+		// Relationships: relationships,
 		Documentation: symbol.Documentation,
 	}, nil
 }
 
 // FindReferences finds all references to a symbol
-func (idx *Indexer) FindReferences(symbolName string) ([]*types.Reference, error) {
+func (idx *Indexer) FindReferences(symbolName string) ([]*model.Reference, error) {
 	symbol, err := idx.db.GetSymbolByName(symbolName)
 	if err != nil {
 		return nil, err
@@ -595,88 +597,88 @@ func (idx *Indexer) FindReferences(symbolName string) ([]*types.Reference, error
 }
 
 // GetDependencies is deprecated. Use BuildDependencyGraph from the AI helpers instead.
-// func (idx *Indexer) GetDependencies(filePath string) (*types.DependencyGraph, error) {
+// func (idx *Indexer) GetDependencies(filePath string) (*model.DependencyGraph, error) {
 // 	// ... (old implementation removed) ...
 // }
 
 // GetAllFiles returns all indexed files
-func (idx *Indexer) GetAllFiles() ([]*types.File, error) {
+func (idx *Indexer) GetAllFiles() ([]*model.File, error) {
 	return idx.db.GetAllFilesForProject(idx.project.ID)
 }
 
 // AI Helper Methods
 
 // GetCodeContext extracts comprehensive context for a symbol
-func (idx *Indexer) GetCodeContext(symbolName string, depth int) (*types.CodeContext, error) {
+func (idx *Indexer) GetCodeContext(symbolName string, depth int) (*model.CodeContext, error) {
 	return idx.contextExtractor.ExtractContext(symbolName, depth)
 }
 
 // AnalyzeChangeImpact analyzes the impact of changing a symbol
-func (idx *Indexer) AnalyzeChangeImpact(symbolName string) (*types.ChangeImpact, error) {
+func (idx *Indexer) AnalyzeChangeImpact(symbolName string) (*model.ChangeImpact, error) {
 	return idx.impactAnalyzer.AnalyzeChangeImpact(symbolName)
 }
 
 // GetCodeMetrics calculates code quality metrics
-func (idx *Indexer) GetCodeMetrics(symbolName string) (*types.CodeMetrics, error) {
+func (idx *Indexer) GetCodeMetrics(symbolName string) (*model.CodeMetrics, error) {
 	return idx.metricsCalc.CalculateMetrics(symbolName)
 }
 
 // ExtractSmartSnippet extracts a self-contained code snippet
-func (idx *Indexer) ExtractSmartSnippet(symbolName string) (*types.SmartSnippet, error) {
+func (idx *Indexer) ExtractSmartSnippet(symbolName string) (*model.SmartSnippet, error) {
 	return idx.snippetExtractor.ExtractSmartSnippet(symbolName, false)
 }
 
 // GetUsageStatistics gets usage statistics for a symbol
-func (idx *Indexer) GetUsageStatistics(symbolName string) (*types.SymbolUsageStats, error) {
+func (idx *Indexer) GetUsageStatistics(symbolName string) (*model.SymbolUsageStats, error) {
 	return idx.usageAnalyzer.AnalyzeUsage(symbolName)
 }
 
 // SuggestRefactorings suggests refactoring opportunities
-func (idx *Indexer) SuggestRefactorings(symbolName string) ([]*types.RefactoringOpportunity, error) {
+func (idx *Indexer) SuggestRefactorings(symbolName string) ([]*model.RefactoringOpportunity, error) {
 	return idx.impactAnalyzer.SuggestRefactorings(symbolName)
 }
 
 // FindUnusedSymbols finds unused symbols in the project
-func (idx *Indexer) FindUnusedSymbols() ([]*types.Symbol, error) {
+func (idx *Indexer) FindUnusedSymbols() ([]*model.Symbol, error) {
 	return idx.usageAnalyzer.FindUnusedSymbols(idx.project.ID)
 }
 
 // FindMostUsedSymbols finds the most used symbols
-func (idx *Indexer) FindMostUsedSymbols(limit int) ([]*types.SymbolUsageStats, error) {
+func (idx *Indexer) FindMostUsedSymbols(limit int) ([]*model.SymbolUsageStats, error) {
 	return idx.usageAnalyzer.FindMostUsedSymbols(idx.project.ID, limit)
 }
 
 // Change Tracking Methods
 
 // SimulateSymbolChange simulates a change without applying it
-func (idx *Indexer) SimulateSymbolChange(symbolName string, changeType types.ChangeType, newValue string) (*types.ChangeImpactResult, error) {
+func (idx *Indexer) SimulateSymbolChange(symbolName string, changeType model.ChangeType, newValue string) (*model.ChangeImpactResult, error) {
 	return idx.changeTracker.SimulateChange(symbolName, changeType, newValue)
 }
 
 // ValidateChanges validates a set of changes
-func (idx *Indexer) ValidateChanges(changes []*types.Change) (*types.ValidationResult, error) {
+func (idx *Indexer) ValidateChanges(changes []*model.Change) (*model.ValidationResult, error) {
 	return idx.changeTracker.ValidateChanges(changes)
 }
 
 // GenerateAutoFixes generates automatic fixes for a change
-func (idx *Indexer) GenerateAutoFixes(change *types.Change) ([]*types.AutoFixSuggestion, error) {
+func (idx *Indexer) GenerateAutoFixes(change *model.Change) ([]*model.AutoFixSuggestion, error) {
 	return idx.changeTracker.GenerateAutoFixes(change)
 }
 
 // Dependency Graph Methods
 
 // BuildDependencyGraph builds a dependency graph for a symbol
-func (idx *Indexer) BuildDependencyGraph(symbolName string, maxDepth int) (*types.DependencyGraph, error) {
+func (idx *Indexer) BuildDependencyGraph(symbolName string, maxDepth int) (*model.DependencyGraph, error) {
 	return idx.depGraphBuilder.BuildSymbolDependencyGraph(symbolName, maxDepth)
 }
 
 // GetDependencies gets all dependencies for a symbol
-func (idx *Indexer) GetDependencies(symbolName string) ([]*types.Symbol, error) {
+func (idx *Indexer) GetDependencies(symbolName string) ([]*model.Symbol, error) {
 	return idx.depGraphBuilder.GetDependenciesFor(symbolName)
 }
 
 // GetDependents gets all symbols that depend on a symbol
-func (idx *Indexer) GetDependents(symbolName string) ([]*types.Symbol, error) {
+func (idx *Indexer) GetDependents(symbolName string) ([]*model.Symbol, error) {
 	return idx.depGraphBuilder.GetDependentsFor(symbolName)
 }
 
@@ -688,7 +690,7 @@ func (idx *Indexer) AnalyzeDependencyChain(symbolName string) (map[string]interf
 // Type Validation Methods
 
 // ValidateFileTypes validates all types in a file
-func (idx *Indexer) ValidateFileTypes(filePath string) (*types.TypeValidation, error) {
+func (idx *Indexer) ValidateFileTypes(filePath string) (*model.TypeValidation, error) {
 	file, err := idx.db.GetFileByPath(idx.project.ID, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("file not found: %w", err)
@@ -697,7 +699,7 @@ func (idx *Indexer) ValidateFileTypes(filePath string) (*types.TypeValidation, e
 }
 
 // FindUndefinedUsages finds all undefined symbol usages in a file
-func (idx *Indexer) FindUndefinedUsages(filePath string) ([]*types.UndefinedUsage, error) {
+func (idx *Indexer) FindUndefinedUsages(filePath string) ([]*model.UndefinedUsage, error) {
 	file, err := idx.db.GetFileByPath(idx.project.ID, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("file not found: %w", err)
@@ -706,12 +708,12 @@ func (idx *Indexer) FindUndefinedUsages(filePath string) ([]*types.UndefinedUsag
 }
 
 // CheckMethodExists checks if a method exists on a type
-func (idx *Indexer) CheckMethodExists(typeName, methodName string) (*types.MissingMethod, error) {
+func (idx *Indexer) CheckMethodExists(typeName, methodName string) (*model.MissingMethod, error) {
 	return idx.typeValidator.CheckMethodExists(typeName, methodName, idx.project.ID)
 }
 
 // CalculateTypeSafetyScore calculates type safety score for a file
-func (idx *Indexer) CalculateTypeSafetyScore(filePath string) (*types.TypeSafetyScore, error) {
+func (idx *Indexer) CalculateTypeSafetyScore(filePath string) (*model.TypeSafetyScore, error) {
 	file, err := idx.db.GetFileByPath(idx.project.ID, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("file not found: %w", err)
@@ -720,6 +722,6 @@ func (idx *Indexer) CalculateTypeSafetyScore(filePath string) (*types.TypeSafety
 }
 
 // GetProject returns the current project
-func (idx *Indexer) GetProject() *types.Project {
+func (idx *Indexer) GetProject() *model.Project {
 	return idx.project
 }

@@ -6,45 +6,60 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/pkg/types"
+	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
 )
 
 // Parser is the Python language parser
 type Parser struct {
-	*parser.BaseParser
 }
 
 // NewParser creates a new Python parser
 func NewParser() *Parser {
-	return &Parser{
-		BaseParser: parser.NewBaseParser("python", []string{".py"}, 100),
-	}
+	return &Parser{}
+}
+
+// Language returns the language identifier (e.g., "python")
+func (p *Parser) Language() string {
+	return "python"
+}
+
+// Extensions returns file extensions this parser handles (e.g., [".py"])
+func (p *Parser) Extensions() []string {
+	return []string{".py"}
+}
+
+// Priority returns parser priority (higher = preferred when multiple parsers match)
+func (p *Parser) Priority() int {
+	return 100
+}
+
+// SupportsFramework checks if parser supports specific framework analysis
+func (p *Parser) SupportsFramework(framework string) bool {
+	return false
 }
 
 // Parse parses Python source code
 // This is a basic regex-based parser. For production use, consider using tree-sitter-python
-func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, error) {
-	result := &types.ParseResult{
-		Symbols:       []*types.Symbol{},
-		Imports:       []*types.Import{},
-		Relationships: []*types.Relationship{},
+func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, error) {
+	result := &parsing.ParseResult{
+		Symbols:       []*model.Symbol{},
+		Imports:       []*model.Import{},
+		Relationships: []*model.Relationship{},
 		Metadata:      make(map[string]interface{}),
 	}
 
 	scanner := bufio.NewScanner(strings.NewReader(string(content)))
 	lineNumber := 0
-	// currentClass := "" // Replaced by parentStack
-	// var currentClassSymbol *types.Symbol // Replaced by parentStack
 	var docstringLines []string
 	inDocstring := false
 	docstringMarker := ""
-	var pendingDocstring string // Holds docstring until a definition is found
-	parentStack := []*types.Symbol{} // Stack to keep track of parent symbols for scope
+	var pendingDocstring string
+	parentStack := []*model.Symbol{}
 
-	// Regex patterns
-	classRegex := regexp.MustCompile(`^class\s+(\w+)(\(.*?\))?:`)
-	functionRegex := regexp.MustCompile(`^(async\s+)?def\s+(\w+)\s*\((.*?)\)(\s*->\s*.+)?:`)
+	classRegex := regexp.MustCompile(`^class\s+(\w+)(\(.*\))?`)
+	functionRegex := regexp.MustCompile(`^(async\s+)?def\s+(\w+)\s*\((.*?)\)(\s*->\s*.+)?`)
 	importRegex := regexp.MustCompile(`^import\s+(.+)`)
 	fromImportRegex := regexp.MustCompile(`^from\s+(.+?)\s+import\s+(.+)`)
 	decoratorRegex := regexp.MustCompile(`^@(\w+)`)
@@ -53,73 +68,64 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 	for scanner.Scan() {
 		lineNumber++
 		line := scanner.Text()
-		trimmed := strings.TrimSpace(line)
+		rimmed := strings.TrimSpace(line)
 		log.Printf("DEBUG: Line %d: %s (trimmed: %s)", lineNumber, line, trimmed)
 
-		// Docstring handling: Collect docstring lines until a non-docstring line or end of docstring is found.
-		// Docstrings are associated with the *next* class or function definition.
-		if (strings.HasPrefix(trimmed, `"""`) || strings.HasPrefix(trimmed, "'''")) { // Start of docstring
+		if (strings.HasPrefix(trimmed, `"""`) || strings.HasPrefix(trimmed, "'''")) {
 			if !inDocstring {
 				inDocstring = true
 				docstringMarker = trimmed[:3]
 				docstringLines = []string{strings.TrimPrefix(trimmed, docstringMarker)}
-				if strings.HasSuffix(trimmed, docstringMarker) && len(trimmed) > 6 { // Single line docstring
+				if strings.HasSuffix(trimmed, docstringMarker) && len(trimmed) > 6 {
 					pendingDocstring = strings.TrimSpace(strings.Trim(trimmed, docstringMarker))
 					log.Printf("DEBUG: Docstring: Single line ended at line %d, content: '%s'", lineNumber, pendingDocstring)
 					inDocstring = false
-					docstringLines = []string{} // Clear docstring lines after use
+					docstringLines = []string{}
 				} else {
 					log.Printf("DEBUG: Docstring: Started at line %d, marker: %s, content: %v", lineNumber, docstringMarker, docstringLines)
 				}
-			} else if strings.Contains(trimmed, docstringMarker) { // End of multi-line docstring
+			} else if strings.Contains(trimmed, docstringMarker) {
 				docstringLines = append(docstringLines, strings.TrimSuffix(trimmed, docstringMarker))
 				pendingDocstring = strings.TrimSpace(strings.Join(docstringLines, "\n"))
 				log.Printf("DEBUG: Docstring: Multi-line ended at line %d, content: '%s'", lineNumber, pendingDocstring)
 				inDocstring = false
-				docstringLines = []string{} // Clear docstring lines after use
+				docstringLines = []string{}
 			}
 			continue
 		}
 
-		if inDocstring { // Inside multi-line docstring
+		if inDocstring {
 			docstringLines = append(docstringLines, trimmed)
 			log.Printf("DEBUG: Docstring: Appending line %d: %s", lineNumber, trimmed)
 			continue
 		}
 
-		// If pendingDocstring exists and the current line is not a definition, clear pendingDocstring.
-		// This handles cases where a docstring is followed by non-definition code.
 		if pendingDocstring != "" && !classRegex.MatchString(trimmed) && !functionRegex.MatchString(trimmed) &&
 			!importRegex.MatchString(trimmed) && !fromImportRegex.MatchString(trimmed) &&
 			!decoratorRegex.MatchString(trimmed) && !varRegex.MatchString(trimmed) &&
 			trimmed != "" && !strings.HasPrefix(trimmed, "#") {
 			log.Printf("DEBUG: Discarding pending docstring at line %d as no definition followed: '%s'", lineNumber, pendingDocstring)
 			pendingDocstring = ""
-			docstringLines = []string{} // Also clear docstringLines
+			docstringLines = []string{}
 		}
 
-		// Skip empty lines and comments
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
 
-		// Get indentation level
-		indent := len(line) - len(trimmed)
+		indent := len(line) - len(strings.TrimLeft(line, " "))
 		log.Printf("DEBUG: Line %d: Indent %d, parentStack size: %d", lineNumber, indent, len(parentStack))
 
-		// Adjust parent stack based on indentation
 		for len(parentStack) > 0 && indent <= parentStack[len(parentStack)-1].Metadata["indent"].(int) {
 			log.Printf("DEBUG: Popping from parentStack. Current indent %d <= parent indent %d (Symbol: %s)", indent, parentStack[len(parentStack)-1].Metadata["indent"].(int), parentStack[len(parentStack)-1].Name)
 			parentStack = parentStack[:len(parentStack)-1]
 		}
 
-		// If we are at top level and stack is not empty, clear it.
 		if indent == 0 && len(parentStack) > 0 {
 			log.Printf("DEBUG: Clearing parentStack at line %d due to top-level indent.", lineNumber)
-			parentStack = []*types.Symbol{}
+			parentStack = []*model.Symbol{}
 		}
 
-		// Check for class definition
 		if match := classRegex.FindStringSubmatch(trimmed); match != nil {
 			className := match[1]
 			var parentClasses string
@@ -127,31 +133,30 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 				parentClasses = strings.Trim(match[2], "()")
 			}
 
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:          className,
-				Type:          types.SymbolTypeClass,
-				StartLine:     lineNumber,
+				Kind:          model.SymbolKindClass,
+				File:          "", // File path will be set by the caller
+				Range:         model.Range{Start: model.Position{Line: lineNumber}, End: model.Position{Line: lineNumber}},
 				Visibility:    p.getVisibility(className),
-				IsExported:    p.isExported(className),
-				Documentation: pendingDocstring, // Use the pending docstring
-				Metadata:      make(map[string]interface{}), // Initialize Metadata
+				Documentation: pendingDocstring,
+				Metadata:      make(map[string]string),
 			}
-			pendingDocstring = "" // Clear pending docstring after use
+			pendingDocstring = ""
 
 			if parentClasses != "" {
 				symbol.Metadata["parent_classes"] = parentClasses
 			}
 
 			result.Symbols = append(result.Symbols, symbol)
-			symbol.Metadata["indent"] = indent // Store indentation level
-			parentStack = append(parentStack, symbol) // Push class onto stack
+			symbol.Metadata["indent"] = string(indent)
+			parentStack = append(parentStack, symbol)
 			log.Printf("DEBUG: Class Symbol: %s, Doc: '%s', parentStack size: %d", className, pendingDocstring, len(parentStack))
-			pendingDocstring = "" // Clear pending docstring after use
-			docstringLines = []string{} // Clear docstring lines after use
+			pendingDocstring = ""
+			docstringLines = []string{}
 			continue
 		}
 
-		// Check for function/method definition
 		if match := functionRegex.FindStringSubmatch(trimmed); match != nil {
 			isAsync := match[1] != ""
 			funcName := match[2]
@@ -161,79 +166,80 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 				returnType = strings.TrimSpace(strings.TrimPrefix(match[4], "->"))
 			}
 
-			symbolType := types.SymbolTypeFunction
-			var parentID *int64
+			symbolKind := model.SymbolKindFunction
+			var parentID string
 
-			// If we're inside a class, it's a method
 			if len(parentStack) > 0 {
 				parentSymbol := parentStack[len(parentStack)-1]
-				// Determine if it's a method or nested function based on parent type
-				if parentSymbol.Type == types.SymbolTypeClass {
-					symbolType = types.SymbolTypeMethod
+				if parentSymbol.Kind == model.SymbolKindClass {
+					symbolKind = model.SymbolKindMethod
 				} else {
-					symbolType = types.SymbolTypeFunction // Nested function
+					symbolKind = model.SymbolKindFunction
 				}
-				parentID = &parentSymbol.ID
-				log.Printf("DEBUG: Assigning ParentID %d (from stack) to %s %s at line %d", *parentID, symbolType, funcName, lineNumber)
+				parentID = parentSymbol.ID
+				log.Printf("DEBUG: Assigning ParentID %s (from stack) to %s %s at line %d", parentID, symbolKind, funcName, lineNumber)
 			}
 
 			signature := p.buildSignature(funcName, params, returnType, isAsync)
-			symbol := &types.Symbol{
+			symbol := &model.Symbol{
 				Name:          funcName,
-				Type:          symbolType,
+				Kind:          symbolKind,
 				Signature:     signature,
-				ParentID:      parentID,
-				StartLine:     lineNumber,
+				File:          "", // File path will be set by the caller
+				Range:         model.Range{Start: model.Position{Line: lineNumber}, End: model.Position{Line: lineNumber}},
 				Visibility:    p.getVisibility(funcName),
-				IsExported:    p.isExported(funcName),
-				IsAsync:       isAsync,
-				Documentation: pendingDocstring, // Use the pending docstring
-				Metadata:      make(map[string]interface{}), // Initialize Metadata
+				Documentation: pendingDocstring,
+				Metadata:      make(map[string]string),
 			}
-			pendingDocstring = "" // Clear pending docstring after use
+			if isAsync {
+				symbol.Metadata["is_async"] = "true"
+			}
+			pendingDocstring = ""
 
-			// Collect decorators that appeared right before this function/method
 			var decorators []string
 			for i := len(result.Symbols) - 1; i >= 0; i-- {
 				lastSymbol := result.Symbols[i]
-				if lastSymbol.Type == types.SymbolTypeDecorator {
+				if lastSymbol.Kind == model.SymbolKindDecorator {
 					decorators = append([]string{lastSymbol.Name}, decorators...)
-					result.Symbols = result.Symbols[:i] // Remove decorator symbol
+					result.Symbols = result.Symbols[:i]
 				} else {
-					break // Stop if a non-decorator symbol is encountered
+					break
 				}
 			}
 
 			if len(decorators) > 0 {
-				symbol.Metadata["decorators"] = decorators
+				symbol.Metadata["decorators"] = strings.Join(decorators, ",")
 				log.Printf("DEBUG: Associated decorators %v with function '%s' at line %d", decorators, funcName, lineNumber)
 			}
 
-			symbol.Metadata["indent"] = indent // Store indentation level
+			symbol.Metadata["indent"] = string(indent)
 			result.Symbols = append(result.Symbols, symbol)
-			parentStack = append(parentStack, symbol) // Push function onto stack
-			log.Printf("DEBUG: Function/Method Symbol: %s, Type: %s, Doc: '%s', parentStack size: %d", funcName, symbolType, pendingDocstring, len(parentStack))
-			pendingDocstring = "" // Clear pending docstring after use
-			docstringLines = []string{} // Clear docstring lines after use
+			parentStack = append(parentStack, symbol)
+			log.Printf("DEBUG: Function/Method Symbol: %s, Kind: %s, Doc: '%s', parentStack size: %d", funcName, symbolKind, pendingDocstring, len(parentStack))
+			pendingDocstring = ""
+			docstringLines = []string{}
 			continue
 		}
 
-		// Check for imports
 		if match := importRegex.FindStringSubmatch(trimmed); match != nil {
 			imports := strings.Split(match[1], ",")
 			for _, imp := range imports {
 				imp = strings.TrimSpace(imp)
-				result.Imports = append(result.Imports, &types.Import{
-					Source:     imp,
-					ImportType: p.getImportType(imp),
-					LineNumber: lineNumber,
+				result.Imports = append(result.Imports, &model.Import{
+					Path: imp,
+					Range: model.Range{
+						Start: model.Position{Line: lineNumber},
+						End:   model.Position{Line: lineNumber},
+					},
+					Metadata: map[string]string{
+						"kind": string(p.getImportType(imp)),
+					},
 				})
 			}
 			log.Printf("DEBUG: Found import: %v at line %d", imports, lineNumber)
 			continue
 		}
 
-		// Check for from...import
 		if match := fromImportRegex.FindStringSubmatch(trimmed); match != nil {
 			source := strings.TrimSpace(match[1])
 			imports := strings.Split(match[2], ",")
@@ -246,49 +252,48 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 				}
 			}
 
-			result.Imports = append(result.Imports, &types.Import{
-				Source:        source,
-				ImportedNames: importedNames,
-				ImportType:    p.getImportType(source),
-				LineNumber:    lineNumber,
+			result.Imports = append(result.Imports, &model.Import{
+				Path:    source,
+				Members: importedNames,
+				Range: model.Range{
+					Start: model.Position{Line: lineNumber},
+					End:   model.Position{Line: lineNumber},
+				},
+				Metadata: map[string]string{
+					"kind": string(p.getImportType(source)),
+				},
 			})
 			log.Printf("DEBUG: Found from-import: from %s import %v at line %d", source, importedNames, lineNumber)
 			continue
 		}
 
-		// Check for decorators
 		if match := decoratorRegex.FindStringSubmatch(trimmed); match != nil {
 			decoratorName := "@" + match[1]
-			result.Symbols = append(result.Symbols, &types.Symbol{
+			result.Symbols = append(result.Symbols, &model.Symbol{
 				Name:       decoratorName,
-				Type:       types.SymbolTypeDecorator, // Change type to Decorator
-				StartLine:  lineNumber,
-				Visibility: types.VisibilityPublic,
+				Kind:       model.SymbolKindDecorator,
+				File:       "", // File path will be set by the caller
+				Range:      model.Range{Start: model.Position{Line: lineNumber}, End: model.Position{Line: lineNumber}},
+				Visibility: model.VisibilityPublic,
 			})
 			log.Printf("DEBUG: Found decorator: %s at line %d", decoratorName, lineNumber)
 			continue
 		}
 
-		// Check for variables (simple detection)
 		if indent == 0 && !strings.HasPrefix(trimmed, "def") && !strings.HasPrefix(trimmed, "class") {
 			if match := varRegex.FindStringSubmatch(trimmed); match != nil {
 				varName := match[1]
 				if !isKeyword(varName) {
-					symbolType := types.SymbolTypeVariable
-					// Python constants are typically all caps, but for this test, we'll treat MAX_SIZE as a variable
-					// if varName == strings.ToUpper(varName) && strings.ContainsAny(varName, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-					// 	symbolType = types.SymbolTypeConstant
-					// }
+					symbolKind := model.SymbolKindVariable
 
-					result.Symbols = append(result.Symbols, &types.Symbol{
+					result.Symbols = append(result.Symbols, &model.Symbol{
 						Name:       varName,
-						Type:       symbolType,
-						StartLine:  lineNumber,
-						EndLine:    lineNumber,
+						Kind:       symbolKind,
+						File:       "", // File path will be set by the caller
+						Range:      model.Range{Start: model.Position{Line: lineNumber}, End: model.Position{Line: lineNumber}},
 						Visibility: p.getVisibility(varName),
-						IsExported: p.isExported(varName),
 					})
-					log.Printf("DEBUG: Found variable/constant: %s, Type: %s at line %d", varName, symbolType, lineNumber)
+					log.Printf("DEBUG: Found variable/constant: %s, Kind: %s at line %d", varName, symbolKind, lineNumber)
 				}
 			}
 		}
@@ -297,7 +302,6 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 	return result, scanner.Err()
 }
 
-// buildSignature builds a function signature string
 func (p *Parser) buildSignature(name, params, returnType string, isAsync bool) string {
 	sig := ""
 	if isAsync {
@@ -307,30 +311,21 @@ func (p *Parser) buildSignature(name, params, returnType string, isAsync bool) s
 	if returnType != "" {
 		sig += " -> " + returnType
 	}
-	sig += ":" // Add colon for Python function signature
+	sig += ":"
 	return sig
 }
 
-// getVisibility determines visibility based on naming convention
-func (p *Parser) getVisibility(name string) types.Visibility {
+func (p *Parser) getVisibility(name string) model.Visibility {
 	if strings.HasPrefix(name, "__") && !strings.HasSuffix(name, "__") {
-		return types.VisibilityInternal // Python's name mangling
+		return model.VisibilityInternal
 	}
 	if strings.HasPrefix(name, "_") {
-		return types.VisibilityPrivate // Convention for private
+		return model.VisibilityPrivate
 	}
-	return types.VisibilityPublic
+	return model.VisibilityPublic
 }
 
-// isExported checks if a symbol is exported (public)
-func (p *Parser) isExported(name string) bool {
-	// In Python, symbols starting with an underscore are generally considered non-exported/private
-	return !strings.HasPrefix(name, "_")
-}
-
-// getImportType determines the type of import
-func (p *Parser) getImportType(source string) types.ImportType {
-	// Standard library modules (simplified check)
+func (p *Parser) getImportType(source string) model.ImportKind {
 	stdLibs := []string{
 		"os", "sys", "re", "json", "datetime", "collections", "itertools",
 		"functools", "pathlib", "typing", "abc", "math", "random", "time",
@@ -339,20 +334,17 @@ func (p *Parser) getImportType(source string) types.ImportType {
 
 	for _, lib := range stdLibs {
 		if source == lib || strings.HasPrefix(source, lib+".") {
-			return types.ImportTypeStdlib
+			return model.ImportKindStdlib
 		}
 	}
 
-	// Local imports
 	if strings.HasPrefix(source, ".") {
-		return types.ImportTypeLocal
+		return model.ImportKindLocal
 	}
 
-	// External packages
-	return types.ImportTypeExternal
+	return model.ImportKindExternal
 }
 
-// isKeyword checks if a name is a Python keyword
 func isKeyword(name string) bool {
 	keywords := []string{
 		"False", "None", "True", "and", "as", "assert", "async", "await",
