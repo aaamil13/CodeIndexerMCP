@@ -192,3 +192,12 @@ type Reference struct {
 	Column           int    `json:"column"`
 }
 
+// FrameworkInfo holds information about detected frameworks
+type FrameworkInfo struct {
+	Name    string            `json:"name"`
+	Version string            `json:"version,omitempty"`
+	Config  map[string]string `json:"config,omitempty"`
+	Entries []string          `json:"entry_points,omitempty"` // e.g., for Django, settings.py
+}
+
+
