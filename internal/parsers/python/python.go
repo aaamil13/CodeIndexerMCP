@@ -34,11 +34,13 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 
 	scanner := bufio.NewScanner(strings.NewReader(string(content)))
 	lineNumber := 0
-	currentClass := ""
-	var currentClassSymbol *types.Symbol
+	// currentClass := "" // Replaced by parentStack
+	// var currentClassSymbol *types.Symbol // Replaced by parentStack
 	var docstringLines []string
 	inDocstring := false
 	docstringMarker := ""
+	var pendingDocstring string // Holds docstring until a definition is found
+	parentStack := []*types.Symbol{} // Stack to keep track of parent symbols for scope
 
 	// Regex patterns
 	classRegex := regexp.MustCompile(`^class\s+(\w+)(\(.*?\))?:`)
@@ -52,32 +54,48 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 		lineNumber++
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
-		log.Printf("Line %d: %s (trimmed: %s)", lineNumber, line, trimmed)
+		log.Printf("DEBUG: Line %d: %s (trimmed: %s)", lineNumber, line, trimmed)
 
 		// Docstring handling: Collect docstring lines until a non-docstring line or end of docstring is found.
 		// Docstrings are associated with the *next* class or function definition.
-		if (strings.HasPrefix(trimmed, `"""`) || strings.HasPrefix(trimmed, "'''")) {
+		if (strings.HasPrefix(trimmed, `"""`) || strings.HasPrefix(trimmed, "'''")) { // Start of docstring
 			if !inDocstring {
 				inDocstring = true
 				docstringMarker = trimmed[:3]
 				docstringLines = []string{strings.TrimPrefix(trimmed, docstringMarker)}
-				if strings.HasSuffix(trimmed, docstringMarker) && len(trimmed) > 6 {
+				if strings.HasSuffix(trimmed, docstringMarker) && len(trimmed) > 6 { // Single line docstring
+					pendingDocstring = strings.TrimSpace(strings.Trim(trimmed, docstringMarker))
+					log.Printf("DEBUG: Docstring: Single line ended at line %d, content: '%s'", lineNumber, pendingDocstring)
 					inDocstring = false
-					docstringLines = []string{strings.Trim(trimmed, docstringMarker)}
+					docstringLines = []string{} // Clear docstring lines after use
+				} else {
+					log.Printf("DEBUG: Docstring: Started at line %d, marker: %s, content: %v", lineNumber, docstringMarker, docstringLines)
 				}
-				log.Printf("Started docstring at line %d, marker: %s, content: %v", lineNumber, docstringMarker, docstringLines)
-			} else if strings.Contains(trimmed, docstringMarker) {
-				inDocstring = false
+			} else if strings.Contains(trimmed, docstringMarker) { // End of multi-line docstring
 				docstringLines = append(docstringLines, strings.TrimSuffix(trimmed, docstringMarker))
-				log.Printf("Ended docstring at line %d, content: %v", lineNumber, docstringLines)
+				pendingDocstring = strings.TrimSpace(strings.Join(docstringLines, "\n"))
+				log.Printf("DEBUG: Docstring: Multi-line ended at line %d, content: '%s'", lineNumber, pendingDocstring)
+				inDocstring = false
+				docstringLines = []string{} // Clear docstring lines after use
 			}
 			continue
 		}
 
-		if inDocstring {
+		if inDocstring { // Inside multi-line docstring
 			docstringLines = append(docstringLines, trimmed)
-			log.Printf("Docstring line %d: %s", lineNumber, trimmed)
+			log.Printf("DEBUG: Docstring: Appending line %d: %s", lineNumber, trimmed)
 			continue
+		}
+
+		// If pendingDocstring exists and the current line is not a definition, clear pendingDocstring.
+		// This handles cases where a docstring is followed by non-definition code.
+		if pendingDocstring != "" && !classRegex.MatchString(trimmed) && !functionRegex.MatchString(trimmed) &&
+			!importRegex.MatchString(trimmed) && !fromImportRegex.MatchString(trimmed) &&
+			!decoratorRegex.MatchString(trimmed) && !varRegex.MatchString(trimmed) &&
+			trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			log.Printf("DEBUG: Discarding pending docstring at line %d as no definition followed: '%s'", lineNumber, pendingDocstring)
+			pendingDocstring = ""
+			docstringLines = []string{} // Also clear docstringLines
 		}
 
 		// Skip empty lines and comments
@@ -87,13 +105,18 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 
 		// Get indentation level
 		indent := len(line) - len(trimmed)
-		log.Printf("Line %d: Indent %d, currentClass: %s", lineNumber, indent, currentClass)
+		log.Printf("DEBUG: Line %d: Indent %d, parentStack size: %d", lineNumber, indent, len(parentStack))
 
-		// Reset class context if we're back at top level
-		if indent == 0 && currentClass != "" {
-			log.Printf("Resetting class context at line %d", lineNumber)
-			currentClass = ""
-			currentClassSymbol = nil
+		// Adjust parent stack based on indentation
+		for len(parentStack) > 0 && indent <= parentStack[len(parentStack)-1].Metadata["indent"].(int) {
+			log.Printf("DEBUG: Popping from parentStack. Current indent %d <= parent indent %d (Symbol: %s)", indent, parentStack[len(parentStack)-1].Metadata["indent"].(int), parentStack[len(parentStack)-1].Name)
+			parentStack = parentStack[:len(parentStack)-1]
+		}
+
+		// If we are at top level and stack is not empty, clear it.
+		if indent == 0 && len(parentStack) > 0 {
+			log.Printf("DEBUG: Clearing parentStack at line %d due to top-level indent.", lineNumber)
+			parentStack = []*types.Symbol{}
 		}
 
 		// Check for class definition
@@ -104,27 +127,27 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 				parentClasses = strings.Trim(match[2], "()")
 			}
 
-			doc := strings.TrimSpace(strings.Join(docstringLines, "\n"))
 			symbol := &types.Symbol{
 				Name:          className,
 				Type:          types.SymbolTypeClass,
 				StartLine:     lineNumber,
 				Visibility:    p.getVisibility(className),
 				IsExported:    p.isExported(className),
-				Documentation: doc,
+				Documentation: pendingDocstring, // Use the pending docstring
+				Metadata:      make(map[string]interface{}), // Initialize Metadata
 			}
+			pendingDocstring = "" // Clear pending docstring after use
 
 			if parentClasses != "" {
-				symbol.Metadata = map[string]interface{}{
-					"parent_classes": parentClasses,
-				}
+				symbol.Metadata["parent_classes"] = parentClasses
 			}
 
 			result.Symbols = append(result.Symbols, symbol)
-			currentClass = className
-			currentClassSymbol = symbol
-			docstringLines = []string{} // Clear docstring after use
-			log.Printf("Found class: %s, Doc: '%s'", className, doc)
+			symbol.Metadata["indent"] = indent // Store indentation level
+			parentStack = append(parentStack, symbol) // Push class onto stack
+			log.Printf("DEBUG: Class Symbol: %s, Doc: '%s', parentStack size: %d", className, pendingDocstring, len(parentStack))
+			pendingDocstring = "" // Clear pending docstring after use
+			docstringLines = []string{} // Clear docstring lines after use
 			continue
 		}
 
@@ -142,16 +165,19 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 			var parentID *int64
 
 			// If we're inside a class, it's a method
-			if currentClass != "" {
-				symbolType = types.SymbolTypeMethod
-				if currentClassSymbol != nil {
-					parentID = &currentClassSymbol.ID
+			if len(parentStack) > 0 {
+				parentSymbol := parentStack[len(parentStack)-1]
+				// Determine if it's a method or nested function based on parent type
+				if parentSymbol.Type == types.SymbolTypeClass {
+					symbolType = types.SymbolTypeMethod
+				} else {
+					symbolType = types.SymbolTypeFunction // Nested function
 				}
+				parentID = &parentSymbol.ID
+				log.Printf("DEBUG: Assigning ParentID %d (from stack) to %s %s at line %d", *parentID, symbolType, funcName, lineNumber)
 			}
 
 			signature := p.buildSignature(funcName, params, returnType, isAsync)
-			doc := strings.TrimSpace(strings.Join(docstringLines, "\n"))
-
 			symbol := &types.Symbol{
 				Name:          funcName,
 				Type:          symbolType,
@@ -161,8 +187,10 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 				Visibility:    p.getVisibility(funcName),
 				IsExported:    p.isExported(funcName),
 				IsAsync:       isAsync,
-				Documentation: doc,
+				Documentation: pendingDocstring, // Use the pending docstring
+				Metadata:      make(map[string]interface{}), // Initialize Metadata
 			}
+			pendingDocstring = "" // Clear pending docstring after use
 
 			// Collect decorators that appeared right before this function/method
 			var decorators []string
@@ -177,16 +205,16 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 			}
 
 			if len(decorators) > 0 {
-				if symbol.Metadata == nil {
-					symbol.Metadata = make(map[string]interface{})
-				}
 				symbol.Metadata["decorators"] = decorators
-				log.Printf("Associated decorators %v with function '%s'", decorators, funcName)
+				log.Printf("DEBUG: Associated decorators %v with function '%s' at line %d", decorators, funcName, lineNumber)
 			}
 
+			symbol.Metadata["indent"] = indent // Store indentation level
 			result.Symbols = append(result.Symbols, symbol)
-			docstringLines = []string{} // Clear docstring after use
-			log.Printf("Found function/method: %s, Type: %s, Doc: '%s'", funcName, symbolType, doc)
+			parentStack = append(parentStack, symbol) // Push function onto stack
+			log.Printf("DEBUG: Function/Method Symbol: %s, Type: %s, Doc: '%s', parentStack size: %d", funcName, symbolType, pendingDocstring, len(parentStack))
+			pendingDocstring = "" // Clear pending docstring after use
+			docstringLines = []string{} // Clear docstring lines after use
 			continue
 		}
 
@@ -201,7 +229,7 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 					LineNumber: lineNumber,
 				})
 			}
-			log.Printf("Found import: %v", imports)
+			log.Printf("DEBUG: Found import: %v at line %d", imports, lineNumber)
 			continue
 		}
 
@@ -224,7 +252,7 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 				ImportType:    p.getImportType(source),
 				LineNumber:    lineNumber,
 			})
-			log.Printf("Found from-import: from %s import %v", source, importedNames)
+			log.Printf("DEBUG: Found from-import: from %s import %v at line %d", source, importedNames, lineNumber)
 			continue
 		}
 
@@ -237,7 +265,7 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 				StartLine:  lineNumber,
 				Visibility: types.VisibilityPublic,
 			})
-			log.Printf("Found decorator: %s", decoratorName)
+			log.Printf("DEBUG: Found decorator: %s at line %d", decoratorName, lineNumber)
 			continue
 		}
 
@@ -260,7 +288,7 @@ func (p *Parser) Parse(content []byte, filePath string) (*types.ParseResult, err
 						Visibility: p.getVisibility(varName),
 						IsExported: p.isExported(varName),
 					})
-					log.Printf("Found variable/constant: %s, Type: %s", varName, symbolType)
+					log.Printf("DEBUG: Found variable/constant: %s, Type: %s at line %d", varName, symbolType, lineNumber)
 				}
 			}
 		}

@@ -156,9 +156,13 @@ func (db *DB) enqueueWrite(query string, args ...interface{}) (sql.Result, error
 		resultChan: resultChan,
 		isQueryRow: false,
 	}
-	db.writeQueue <- op
-	res := <-resultChan
-	return res.res, res.err
+	select {
+	case db.writeQueue <- op:
+		res := <-resultChan
+		return res.res, res.err
+	default:
+		return nil, fmt.Errorf("database write queue is closed")
+	}
 }
 
 // enqueueQueryRow enqueues a QueryRow operation for the single writer goroutine
@@ -170,9 +174,18 @@ func (db *DB) enqueueQueryRow(query string, args ...interface{}) *sql.Row {
 		resultChan: resultChan,
 		isQueryRow: true,
 	}
-	db.writeQueue <- op
-	res := <-resultChan
-	return res.row
+	select {
+	case db.writeQueue <- op:
+		res := <-resultChan
+		return res.row
+	default:
+		// Return a row with an error, similar to how QueryRow would behave on error
+		// This is a bit tricky as sql.Row doesn't expose a way to set an error directly.
+		// The caller will eventually get an error when calling Scan().
+		// For now, we'll log and return an empty row.
+		db.logger.Errorf("Attempted to enqueue query row to a closed database write queue")
+		return db.conn.QueryRow("SELECT 0 WHERE 1=0") // Return an empty result set
+	}
 }
 
 
