@@ -12,4 +12,4 @@ test-sandbox:
 .PHONY: build
 build:
 	@echo "Building CodeIndexerMCP..."
-	go build -o codeindexer cmd/server/main.go
+	go build -o codeindexer cmd/code-indexer/main.go

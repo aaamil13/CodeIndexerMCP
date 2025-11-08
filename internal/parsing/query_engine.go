@@ -2,7 +2,7 @@ package parsing
 
 import (
     "fmt"
-    
+    "github.com/aaamil13/CodeIndexerMCP/internal/parsing/queries"
     sitter "github.com/smacker/go-tree-sitter"
 )
 
@@ -88,8 +88,11 @@ func (qe *QueryEngine) Execute(parseResult *ParseResult, queryString string) (*Q
     return result, nil
 }
 
-func (qe *QueryEngine) ExecuteFromFile(parseResult *ParseResult, queryFilePath string) (*QueryResult, error) {
-    // Зареждане на query от .scm файл
-    // Имплементирайте четене от queries/ директория
-    return nil, fmt.Errorf("not implemented")
+func (qe *QueryEngine) ExecuteFromFile(parseResult *ParseResult, language string) (*QueryResult, error) {
+    queryString, err := queries.GetQuery(language, "default")
+    if err != nil {
+        return nil, err
+    }
+    
+    return qe.Execute(parseResult, queryString)
 }
