@@ -2,8 +2,10 @@ package extractors
 
 import (
 	"testing"
+	"encoding/json" // Added for JSON unmarshalling
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
+	"github.com/aaamil13/CodeIndexerMCP/internal/model" // Explicitly import model
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/python"
 )
@@ -94,19 +96,58 @@ class MyClass(object):
 		t.Fatalf("ExtractAll failed: %v", err)
 	}
 
-	if fileSymbols.Language != "python" {
-		t.Errorf("expected language 'python', got '%s'", fileSymbols.Language)
+	// Unmarshal the SymbolsJSON to verify content
+	var extractedSymbols []*model.Symbol
+	err = json.Unmarshal(fileSymbols.SymbolsJSON, &extractedSymbols)
+	if err != nil {
+		t.Fatalf("failed to unmarshal symbolsJSON: %v", err)
 	}
 
-	if len(fileSymbols.Functions) != 1 { // my_function
-		t.Errorf("expected 1 function, got %d", len(fileSymbols.Functions))
+	var functions []*model.Function
+	var methods []*model.Method
+	var classes []*model.Class
+
+	for _, sym := range extractedSymbols {
+		switch sym.Kind {
+		case "function":
+			var f model.Function
+			if metaStr, ok := sym.Metadata["function"]; ok {
+				if err := json.Unmarshal([]byte(metaStr), &f); err != nil {
+					t.Fatalf("failed to unmarshal function metadata: %v", err)
+				}
+			}
+			f.Symbol = *sym // Copy common symbol fields
+			functions = append(functions, &f)
+		case "method":
+			var m model.Method
+			if metaStr, ok := sym.Metadata["method"]; ok {
+				if err := json.Unmarshal([]byte(metaStr), &m); err != nil {
+					t.Fatalf("failed to unmarshal method metadata: %v", err)
+				}
+			}
+			m.Symbol = *sym // Copy common symbol fields
+			methods = append(methods, &m)
+		case "class":
+			var c model.Class
+			if metaStr, ok := sym.Metadata["class"]; ok {
+				if err := json.Unmarshal([]byte(metaStr), &c); err != nil {
+					t.Fatalf("failed to unmarshal class metadata: %v", err)
+				}
+			}
+			c.Symbol = *sym // Copy common symbol fields
+			classes = append(classes, &c)
+		}
 	}
 
-	if len(fileSymbols.Classes) != 1 {
-		t.Errorf("expected 1 class, got %d", len(fileSymbols.Classes))
+	if len(functions) != 1 { // my_function
+		t.Errorf("expected 1 function, got %d", len(functions))
 	}
 
-	if len(fileSymbols.Methods) != 2 { // __init__ and get_name
-		t.Errorf("expected 2 methods, got %d", len(fileSymbols.Methods))
+	if len(classes) != 1 {
+		t.Errorf("expected 1 class, got %d", len(classes))
+	}
+
+	if len(methods) != 2 { // __init__ and get_name
+		t.Errorf("expected 2 methods, got %d", len(methods))
 	}
 }

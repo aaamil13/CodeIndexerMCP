@@ -26,20 +26,21 @@ func (se *SnippetExtractor) ExtractSmartSnippet(symbol *model.Symbol, includeTes
 		return nil, fmt.Errorf("symbol cannot be nil")
 	}
 
-	// Get file
-	file := symbol.File
+	// Get file path and ID
+	filePath := symbol.FilePath
+	fileID := symbol.FileID
 
 	// Extract main code
-	code, err := se.extractCode(file, symbol.Range.Start.Line, symbol.Range.End.Line)
+	code, err := se.extractCode(filePath, symbol.Range.Start.Line, symbol.Range.End.Line)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract code for symbol %s: %w", symbol.Name, err)
 	}
 
 	// Get dependencies (imports)
-	imports, err := se.db.GetImportsByFile(file)
+	imports, err := se.db.GetImportsByFile(fileID) // Pass FileID
 	if err != nil {
 		// Log error but continue, imports might not be critical for a snippet
-		fmt.Printf("Warning: Failed to get imports for file %s: %v\n", file, err)
+		fmt.Printf("Warning: Failed to get imports for file ID %d: %v\n", fileID, err)
 		imports = []*model.Import{}
 	}
 
@@ -49,7 +50,7 @@ func (se *SnippetExtractor) ExtractSmartSnippet(symbol *model.Symbol, includeTes
 	}
 
 	// Get related code (helper functions, types used by this symbol)
-	relatedCode, err := se.extractRelatedCode(symbol, file)
+	relatedCode, err := se.extractRelatedCode(symbol, filePath) // Corrected call
 	if err != nil {
 		fmt.Printf("Warning: Failed to extract related code for symbol %s: %v\n", symbol.Name, err)
 		relatedCode = []string{} // Non-fatal
@@ -98,13 +99,13 @@ func (se *SnippetExtractor) extractCode(filePath string, startLine, endLine int)
 }
 
 // extractRelatedCode extracts related code (helper functions, types)
-func (se *SnippetExtractor) extractRelatedCode(symbol *model.Symbol, file string) ([]string, error) {
+func (se *SnippetExtractor) extractRelatedCode(symbol *model.Symbol, filePath string) ([]string, error) {
 	relatedCode := []string{}
 
 	// Get all symbols in the file
-	symbols, err := se.db.GetSymbolsByFile(file)
+	symbols, err := se.db.GetSymbolsByFile(symbol.FileID) // Use symbol.FileID
 	if err != nil {
-		return relatedCode, fmt.Errorf("failed to get symbols for file %s: %w", file, err)
+		return relatedCode, fmt.Errorf("failed to get symbols for file ID %d: %w", symbol.FileID, err)
 	}
 
 	// Find symbols that this symbol might depend on or relate to
@@ -117,10 +118,10 @@ func (se *SnippetExtractor) extractRelatedCode(symbol *model.Symbol, file string
 		// Heuristic: Include symbols that are defined close by or are of a related kind
 		// This is a simplification; a real implementation would analyze usage within the snippet.
 		if (sym.Kind == model.SymbolKindFunction || sym.Kind == model.SymbolKindMethod ||
-			sym.Kind == model.SymbolKindClass || sym.Kind == model.SymbolKindInterface ||
+			sym.Kind == model.SymbolKindClass || model.SymbolKindInterface ||
 			sym.Kind == model.SymbolKindStruct || sym.Kind == model.SymbolKindType) &&
 			(sym.Range.Start.Line >= symbol.Range.Start.Line-10 && sym.Range.End.Line <= symbol.Range.End.Line+10) { // Within 10 lines
-			code, err := se.extractCode(file, sym.Range.Start.Line, sym.Range.End.Line)
+			code, err := se.extractCode(filePath, sym.Range.Start.Line, sym.Range.End.Line) // Use filePath consistently
 			if err == nil && code != "" {
 				relatedCode = append(relatedCode, code)
 			}
@@ -201,9 +202,9 @@ func (se *SnippetExtractor) ExtractMinimalSnippet(symbol *model.Symbol) (string,
 		return "", fmt.Errorf("symbol cannot be nil")
 	}
 
-	file := symbol.File
+	filePath := symbol.FilePath
 
-	return se.extractCode(file, symbol.Range.Start.Line, symbol.Range.End.Line)
+	return se.extractCode(filePath, symbol.Range.Start.Line, symbol.Range.End.Line)
 }
 
 // ExtractWithContext extracts code with surrounding context
@@ -212,7 +213,7 @@ func (se *SnippetExtractor) ExtractWithContext(symbol *model.Symbol, contextLine
 		return "", fmt.Errorf("symbol cannot be nil")
 	}
 
-	file := symbol.File
+	filePath := symbol.FilePath
 
 	startLine := symbol.Range.Start.Line - contextLines
 	if startLine < 1 {
@@ -220,7 +221,7 @@ func (se *SnippetExtractor) ExtractWithContext(symbol *model.Symbol, contextLine
 	}
 	endLine := symbol.Range.End.Line + contextLines
 
-	return se.extractCode(file, startLine, endLine)
+	return se.extractCode(filePath, startLine, endLine)
 }
 
 func init() {

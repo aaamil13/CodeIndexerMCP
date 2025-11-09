@@ -54,8 +54,8 @@ const (
 		file_id INTEGER NOT NULL,
 		name TEXT NOT NULL,
 		kind TEXT NOT NULL,
-		file_path TEXT NOT NULL, -- Added file_path
-		language TEXT NOT NULL, -- Added language
+		file_path TEXT NOT NULL,
+		language TEXT NOT NULL,
 		line_number INTEGER NOT NULL,
 		column_number INTEGER NOT NULL,
 		end_line_number INTEGER NOT NULL,
@@ -67,7 +67,7 @@ const (
 		status TEXT DEFAULT 'unassigned',
 		priority TEXT DEFAULT 'medium',
 		assigned_agent TEXT,
-		content_hash TEXT, -- Added content_hash
+		content_hash TEXT,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		metadata JSON,

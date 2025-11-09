@@ -4,6 +4,8 @@ import (
     "fmt"
     "strings"
     "time"
+    "strconv" // Added for type conversion
+    "encoding/json" // Added for JSON marshalling
     
     "github.com/aaamil13/CodeIndexerMCP/internal/model"
     "github.com/aaamil13/CodeIndexerMCP/internal/parsing"
@@ -100,13 +102,20 @@ func (ge *GoExtractor) ExtractFunctions(parseResult *parsing.ParseResult, filePa
         parameters := ge.parseParametersFromNode(paramsNode, parseResult.SourceCode)
         
         contentHash := ge.ComputeContentHash(body)
+
+        // Convert generated ID (string) to int
+        idStr := ge.GenerateID("function", funcName, filePath, pos)
+        id, err := strconv.Atoi(idStr)
+        if err != nil {
+            return nil, fmt.Errorf("failed to convert function ID to int: %w", err)
+        }
         
         function := &model.Function{
             Symbol: model.Symbol{
-                ID:            ge.GenerateID("function", funcName, filePath, pos),
+                ID:            id,
                 Name:          funcName,
                 Kind:          "function",
-                File:          filePath,
+                FilePath:      filePath,
                 Range:         funcRange,
                 Signature:     ge.buildSignature(funcName, parameters, returnType),
                 Documentation: ge.ExtractDocumentation(funcNode, parseResult.SourceCode),
@@ -164,13 +173,20 @@ func (ge *GoExtractor) ExtractMethods(parseResult *parsing.ParseResult, filePath
         pos := ge.NodeToPosition(methodNode)
         methodRange := ge.NodeToRange(methodNode)
         
+        // Convert generated ID (string) to int
+        idStr := ge.GenerateID("method", methodName, filePath, pos)
+        id, err := strconv.Atoi(idStr)
+        if err != nil {
+            return nil, fmt.Errorf("failed to convert method ID to int: %w", err)
+        }
+
         method := &model.Method{
             Function: model.Function{
                 Symbol: model.Symbol{
-                    ID:            ge.GenerateID("method", methodName, filePath, pos),
+                    ID:            id,
                     Name:          methodName,
                     Kind:          "method",
-                    File:          filePath,
+                    FilePath:      filePath,
                     Range:         methodRange,
                     Signature:     fmt.Sprintf("func (%s) %s%s %s", receiverType, methodName, paramsNode.Content(parseResult.SourceCode), returnType),
                     Documentation: ge.ExtractDocumentation(methodNode, parseResult.SourceCode),
@@ -221,12 +237,19 @@ func (ge *GoExtractor) ExtractStructs(parseResult *parsing.ParseResult, filePath
         pos := ge.NodeToPosition(structNode)
         structRange := ge.NodeToRange(structNode)
         
+        // Convert generated ID (string) to int
+        idStr := ge.GenerateID("struct", structName, filePath, pos)
+        id, err := strconv.Atoi(idStr)
+        if err != nil {
+            return nil, fmt.Errorf("failed to convert struct ID to int: %w", err)
+        }
+
         class := &model.Class{
             Symbol: model.Symbol{
-                ID:            ge.GenerateID("struct", structName, filePath, pos),
+                ID:            id,
                 Name:          structName,
                 Kind:          "struct",
-                File:          filePath,
+                FilePath:      filePath,
                 Range:         structRange,
                 Signature:     fmt.Sprintf("type %s struct", structName),
                 Documentation: ge.ExtractDocumentation(structNode, parseResult.SourceCode),
@@ -333,12 +356,27 @@ func (ge *GoExtractor) ExtractAll(parseResult *parsing.ParseResult, filePath str
         return nil, err
     }
     
+    allSymbols := make([]*model.Symbol, 0)
+    for _, f := range functions {
+        allSymbols = append(allSymbols, &f.Symbol)
+    }
+    for _, m := range methods {
+        allSymbols = append(allSymbols, &m.Symbol)
+    }
+    for _, s := range structs {
+        allSymbols = append(allSymbols, &s.Symbol)
+    }
+
+    symbolsJSON, err := json.Marshal(allSymbols)
+    if err != nil {
+        return nil, fmt.Errorf("failed to marshal symbols to JSON: %w", err)
+    }
+
     return &model.FileSymbols{
-        FilePath:  filePath,
-        Language:  "go",
-        Functions: functions,
-        Methods:   methods,
-        Classes:   structs,
-        ParseTime: time.Now(),
+        // FileID needs to be set when saving to DB, not during extraction.
+        // It's not available here.
+        SymbolsJSON: symbolsJSON,
+        CreatedAt:   time.Now(),
+        UpdatedAt:   time.Now(),
     }, nil
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"strconv" // Added for type conversion
+	"encoding/json" // Added for JSON marshalling
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/parsing"
@@ -86,12 +88,19 @@ func (pe *PythonExtractor) ExtractFunctions(parseResult *parsing.ParseResult, fi
 
 		contentHash := pe.ComputeContentHash(body)
 
+		// Convert generated ID (string) to int
+		idStr := pe.GenerateID("function", funcName, filePath, pos)
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert function ID to int: %w", err)
+		}
+
 		function := &model.Function{
 			Symbol: model.Symbol{
-				ID:            pe.GenerateID("function", funcName, filePath, pos),
+				ID:            id,
 				Name:          funcName,
 				Kind:          "function",
-				File:          filePath,
+				FilePath:      filePath,
 				Range:         funcRange,
 				Signature:     pe.buildSignature(funcName, parameters, ""),
 				Documentation: pe.ExtractDocumentation(funcNode, parseResult.SourceCode),
@@ -264,38 +273,29 @@ func (pe *PythonExtractor) ExtractClasses(parseResult *parsing.ParseResult, file
 
 
 
+		// Convert generated ID (string) to int
+		idStr := pe.GenerateID("class", className, filePath, pos)
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert class ID to int: %w", err)
+		}
+
 		class := &model.Class{
-
 			Symbol: model.Symbol{
-
-				ID:            pe.GenerateID("class", className, filePath, pos),
-
+				ID:            id,
 				Name:          className,
-
 				Kind:          "class",
-
-				File:          filePath,
-
+				FilePath:      filePath,
 				Range:         classRange,
-
 				Signature:     fmt.Sprintf("class %s(%s)", className, bases),
-
 				Documentation: pe.ExtractDocumentation(classNode, parseResult.SourceCode),
-
 				Language:      "python",
-
 				Status:        pe.ExtractStatusFromComments(classNode, parseResult.SourceCode),
-
 				Priority:      pe.ExtractPriorityFromComments(classNode, parseResult.SourceCode),
-
 				CreatedAt:     time.Now(),
-
 				UpdatedAt:     time.Now(),
-
 			},
-
 			BaseClasses: strings.Split(bases, ", "),
-
 		}
 
 
@@ -384,48 +384,34 @@ func (pe *PythonExtractor) ExtractMethods(parseResult *parsing.ParseResult, file
 
 
 
+		// Convert generated ID (string) to int
+		idStr := pe.GenerateID("method", methodName, filePath, pos)
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert method ID to int: %w", err)
+		}
+
 		method := &model.Method{
-
 			Function: model.Function{
-
 				Symbol: model.Symbol{
-
-					ID:            pe.GenerateID("method", methodName, filePath, pos),
-
+					ID:            id,
 					Name:          methodName,
-
 					Kind:          "method",
-
-					File:          filePath,
-
+					FilePath:      filePath,
 					Range:         methodRange,
-
 					Signature:     pe.buildSignature(methodName, parameters, ""),
-
 					Documentation: pe.ExtractDocumentation(methodNode, parseResult.SourceCode),
-
 					Language:      "python",
-
 					ContentHash:   contentHash,
-
 					Status:        pe.ExtractStatusFromComments(methodNode, parseResult.SourceCode),
-
 					Priority:      pe.ExtractPriorityFromComments(methodNode, parseResult.SourceCode),
-
 					CreatedAt:     time.Now(),
-
 					UpdatedAt:     time.Now(),
-
 				},
-
 				Parameters: parameters,
-
 				Body:       body,
-
 			},
-
 			ReceiverType: "", // Python methods don't have a distinct receiver type in signature
-
 		}
 
 
@@ -474,22 +460,27 @@ func (pe *PythonExtractor) ExtractAll(parseResult *parsing.ParseResult, filePath
 
 
 
+	allSymbols := make([]*model.Symbol, 0)
+	for _, f := range functions {
+		allSymbols = append(allSymbols, &f.Symbol)
+	}
+	for _, c := range classes {
+		allSymbols = append(allSymbols, &c.Symbol)
+	}
+	for _, m := range methods {
+		allSymbols = append(allSymbols, &m.Symbol)
+	}
+
+	symbolsJSON, err := json.Marshal(allSymbols)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal symbols to JSON: %w", err)
+	}
+
 	return &model.FileSymbols{
-
-		FilePath:  filePath,
-
-		Language:  "python",
-
-		Functions: functions,
-
-		Classes:   classes,
-
-		Methods:   methods,
-
-		ParseTime: time.Now(),
-
-	},
-
-	nil
-
+		// FileID needs to be set when saving to DB, not during extraction.
+		// It's not available here.
+		SymbolsJSON: symbolsJSON,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}, nil
 }

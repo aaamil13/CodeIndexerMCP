@@ -3,9 +3,10 @@ package ai
 import (
 	"context"
 	"fmt"
+	"strconv" // Added for type conversion
 
-	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
+	// "github.com/aaamil13/CodeIndexerMCP/internal/model" // Removed as it's not directly used after changes
 )
 
 // CodeGenerator provides functionality to generate code based on a given prompt and context.
@@ -32,32 +33,23 @@ func (cg *CodeGenerator) GenerateCode(ctx context.Context, prompt string, target
 	// If a targetSymbolID is provided, fetch its details and include in the context.
 	var contextString string
 	if targetSymbolID != "" {
-		symbol, err := cg.dbManager.GetSymbol(targetSymbolID)
+		id, err := strconv.Atoi(targetSymbolID)
+		if err != nil {
+			return "", fmt.Errorf("invalid targetSymbolID: %w", err)
+		}
+		symbol, err := cg.dbManager.GetSymbolByID(id)
 		if err != nil {
 			return "", fmt.Errorf("failed to get target symbol: %w", err)
 		}
 		if symbol != nil {
-			contextString = fmt.Sprintf("Context from symbol '%s' (%s):\nKind: %s\nFile: %s\nSignature: %s\nDocumentation: %s\n",
-				symbol.Name, symbol.ID, symbol.Kind, symbol.File, symbol.Signature, symbol.Documentation)
+			contextString = fmt.Sprintf("Context from symbol '%s' (%d):\nKind: %s\nFile: %s\nSignature: %s\nDocumentation: %s\n",
+				symbol.Name, symbol.ID, symbol.Kind, symbol.FilePath, symbol.Signature, symbol.Documentation)
 			
-			// If it's a function, get its details
-			if symbol.Kind == model.SymbolKindFunction || symbol.Kind == model.SymbolKindMethod {
-				function, err := cg.dbManager.GetFunctionDetails(targetSymbolID)
-				if err != nil {
-					return "", fmt.Errorf("failed to get function details for '%s': %w", targetSymbolID, err)
-				}
-				if function != nil {
-					contextString += fmt.Sprintf("Body: %s\nParameters: %+v\n", function.Body, function.Parameters)
-				}
-			} else if symbol.Kind == model.SymbolKindClass {
-				class, err := cg.dbManager.GetClassDetails(targetSymbolID)
-				if err != nil {
-					return "", fmt.Errorf("failed to get class details for '%s': %w", targetSymbolID, err)
-				}
-				if class != nil {
-					contextString += fmt.Sprintf("Fields: %+v\n", class.Fields)
-				}
-			}
+			// We no longer have GetFunctionDetails or GetClassDetails methods.
+			// The full information for the function/class should ideally be reconstructed
+			// from the symbol's metadata if stored there, or fetched via other means.
+			// For now, we'll just use the base symbol information.
+			// TODO: Enhance this to reconstruct full function/class object from symbol.Metadata
 		}
 	}
 

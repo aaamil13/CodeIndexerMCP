@@ -40,25 +40,21 @@ func (ct *ChangeTracker) AnalyzeSymbolChange(change *model.Change) (*model.Chang
 	}
 
 	// Get the full symbol details
-	var fullSymbol interface{}
-	var err error
-	switch change.Symbol.Kind {
-	case model.SymbolKindFunction, model.SymbolKindMethod:
-		fullSymbol, err = ct.db.GetFunctionDetails(change.Symbol.ID)
-	case model.SymbolKindClass:
-		fullSymbol, err = ct.db.GetClassDetails(change.Symbol.ID)
-	default:
-		fullSymbol = change.Symbol // Fallback to base symbol if no specific details are needed/available
+	existingSymbol, err := ct.db.GetSymbolByID(change.Symbol.ID)
+	if err != nil {
+		return result, fmt.Errorf("failed to get existing symbol details for %d: %w", change.Symbol.ID, err)
+	}
+	if existingSymbol == nil {
+		// If symbol not found in DB, it might be a new symbol being added.
+		// For now, assume the change.Symbol itself is the "full" symbol.
+		existingSymbol = change.Symbol
 	}
 
-	if err != nil {
-		return result, fmt.Errorf("failed to get full symbol details for %s: %w", change.Symbol.ID, err)
-	}
-	if fullSymbol == nil {
-		// If symbol not found in DB, it might be a new symbol being added, or an error.
-		// For now, treat as base symbol.
-		fullSymbol = change.Symbol
-	}
+	// For now, we'll use the existingSymbol directly as the "fullSymbol" for impact analysis,
+	// as GetFunctionDetails and GetClassDetails are no longer available.
+	// Future improvements might involve reconstructing model.Function or model.Class
+	// from the base model.Symbol and its metadata.
+	_ = existingSymbol // This variable will be used in a later step if needed.
 
 
 	// Perform impact analysis based on change type
