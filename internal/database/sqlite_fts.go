@@ -1,4 +1,4 @@
-//go:build cgo && sqlite_full
+//go:build cgo && fts5
 
 package database
 

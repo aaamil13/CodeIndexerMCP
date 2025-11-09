@@ -95,7 +95,6 @@ type Symbol struct {
     Documentation string            `json:"documentation"`
     Visibility    Visibility        `json:"visibility"` // "public", "private", "protected"
     Language      string            `json:"language"`
-    Type          string            `json:"type,omitempty"`
     
     // 💡 ПОДОБРЕНИЕ #5: Content Hash за детекция на промени
     ContentHash   string            `json:"content_hash"`

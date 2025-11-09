@@ -234,11 +234,9 @@ func (idx *Indexer) IndexAll() error {
         })
     }()
     
-    // Collector for results
-    go func() {
-        wg.Wait()
-        close(results)
-    }()
+    // Wait for all workers to finish
+    wg.Wait()
+    close(results) // Close the results channel after all workers are done
     
     // Process results
     for result := range results {

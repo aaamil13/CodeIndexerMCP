@@ -123,15 +123,9 @@ func (sa *SemanticAnalyzer) InferType(symbolID string) (*model.TypeInference, er
 	// For variables, more advanced analysis (e.g., from assignment or usage) would be needed.
 	// For simplicity, we'll use a basic inference for now.
 	case model.SymbolKindVariable, model.SymbolKindParameter, model.SymbolKindField:
-		if symbol.Type != "" {
-			inference.InferredType = symbol.Type
-			inference.Confidence = 0.9
-			inference.Reasoning = "Directly from symbol type information"
-		} else {
-			inference.InferredType = sa.inferVariableType(symbol)
-			inference.Confidence = 0.6
-			inference.Reasoning = "Inferred from usage context or basic signature parsing"
-		}
+		inference.InferredType = sa.inferVariableType(symbol)
+		inference.Confidence = 0.6
+		inference.Reasoning = "Inferred from usage context or basic signature parsing (direct type field removed from Symbol)"
 
 	case model.SymbolKindClass, model.SymbolKindInterface, model.SymbolKindStruct, model.SymbolKindEnum:
 		inference.InferredType = symbol.Name // Class/Interface name is its own type

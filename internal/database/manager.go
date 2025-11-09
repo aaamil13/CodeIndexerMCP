@@ -26,7 +26,8 @@ type Manager struct {
 }
 
 func NewManager(dbPath string, logger *utils.Logger) (*Manager, error) {
-	db, err := sql.Open("sqlite3", dbPath) // Change driver name to "sqlite3"
+	// Enable WAL mode for better concurrency in SQLite
+	db, err := sql.Open("sqlite3", dbPath + "?_journal=WAL")
 	if err != nil {
 		return nil, err
 	}
@@ -417,7 +418,8 @@ func (m *Manager) GetProject(projectPath string) (*model.Project, error) {
 
 	return p, nil
 }
-func (m *Manager) SaveSymbol(symbol *model.Symbol) error {
+// SaveSymbolTx saves a symbol using a provided transaction
+func (m *Manager) SaveSymbolTx(tx *sql.Tx, symbol *model.Symbol) error {
     metadata, _ := json.Marshal(symbol.Metadata)
     
     query := `
@@ -429,7 +431,7 @@ func (m *Manager) SaveSymbol(symbol *model.Symbol) error {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
     
-    _, err := m.db.Exec(query,
+    _, err := tx.Exec(query,
         symbol.ID, symbol.Name, symbol.Kind, symbol.File, symbol.Language,
         symbol.Signature, symbol.Documentation, symbol.Visibility,
         symbol.Range.Start.Line, symbol.Range.Start.Column, symbol.Range.Start.Byte,
@@ -439,6 +441,13 @@ func (m *Manager) SaveSymbol(symbol *model.Symbol) error {
     )
     
     return err
+}
+
+func (m *Manager) SaveSymbol(symbol *model.Symbol) error {
+	// For operations outside of a larger transaction, create a new one.
+	return m.Transaction(func(tx *sql.Tx) error {
+		return m.SaveSymbolTx(tx, symbol)
+	})
 }
 
 // 💡 ПОДОБРЕНИЕ #5: Проверка за промени чрез content hash
@@ -474,15 +483,9 @@ func (m *Manager) SaveSymbolIfChanged(symbol *model.Symbol) (bool, error) {
 	return true, m.SaveSymbol(symbol)
 }
 
-func (m *Manager) SaveFunction(function *model.Function) error {
-	tx, err := m.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
+func (m *Manager) SaveFunction(tx *sql.Tx, function *model.Function) error {
 	// Запазване на символа
-	if err := m.SaveSymbol(&function.Symbol); err != nil {
+	if err := m.SaveSymbolTx(tx, &function.Symbol); err != nil {
 		return err
 	}
 
@@ -493,7 +496,7 @@ func (m *Manager) SaveFunction(function *model.Function) error {
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `
 
-	_, err = tx.Exec(funcQuery,
+	_, err := tx.Exec(funcQuery,
 		function.ID, function.ReturnType, function.IsAsync,
 		function.IsGenerator, function.Body, "", false,
 	)
@@ -518,18 +521,12 @@ func (m *Manager) SaveFunction(function *model.Function) error {
 		}
 	}
 
-	return tx.Commit()
+	return nil
 }
 
-func (m *Manager) SaveMethod(method *model.Method) error {
-    tx, err := m.db.Begin()
-    if err != nil {
-        return err
-    }
-    defer tx.Rollback()
-    
+func (m *Manager) SaveMethod(tx *sql.Tx, method *model.Method) error {
     // Запазване на символа
-    if err := m.SaveSymbol(&method.Symbol); err != nil {
+    if err := m.SaveSymbolTx(tx, &method.Symbol); err != nil {
         return err
     }
     
@@ -540,7 +537,7 @@ func (m *Manager) SaveMethod(method *model.Method) error {
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `
     
-    _, err = tx.Exec(funcQuery,
+    _, err := tx.Exec(funcQuery,
         method.ID, method.ReturnType, method.IsAsync,
         method.IsGenerator, method.Body, method.ReceiverType, method.IsStatic,
     )
@@ -565,7 +562,7 @@ func (m *Manager) SaveMethod(method *model.Method) error {
         }
     }
     
-    return tx.Commit()
+    return nil
 }
 
 func (m *Manager) SaveClass(class *model.Class) error {
@@ -824,7 +821,7 @@ func (m *Manager) GetParameters(functionID string) ([]model.Parameter, error) {
 
 func (m *Manager) GetSymbolByName(name string) (*model.Symbol, error) {
 	query := `
-        SELECT id, name, kind, file_path, language, type,
+        SELECT id, name, kind, file_path, language,
                start_line, start_column, start_byte,
                end_line, end_column, end_byte, content_hash
         FROM symbols
@@ -836,7 +833,7 @@ func (m *Manager) GetSymbolByName(name string) (*model.Symbol, error) {
 
 func (m *Manager) GetSymbol(id string) (*model.Symbol, error) {
 	query := `
-        SELECT id, name, kind, file_path, language, type,
+        SELECT id, name, kind, file_path, language,
                start_line, start_column, start_byte,
                end_line, end_column, end_byte, content_hash
         FROM symbols
@@ -848,10 +845,9 @@ func (m *Manager) GetSymbol(id string) (*model.Symbol, error) {
 
 func (m *Manager) scanSymbol(row *sql.Row) (*model.Symbol, error) {
 	s := &model.Symbol{}
-	var symbolType sql.NullString // Use sql.NullString for nullable 'type' column
 
 	err := row.Scan(
-		&s.ID, &s.Name, &s.Kind, &s.File, &s.Language, &symbolType,
+		&s.ID, &s.Name, &s.Kind, &s.File, &s.Language,
 		&s.Range.Start.Line, &s.Range.Start.Column, &s.Range.Start.Byte,
 		&s.Range.End.Line, &s.Range.End.Column, &s.Range.End.Byte, &s.ContentHash,
 	)
@@ -860,10 +856,6 @@ func (m *Manager) scanSymbol(row *sql.Row) (*model.Symbol, error) {
 	}
 	if err != nil {
 		return nil, err
-	}
-
-	if symbolType.Valid {
-		s.Type = symbolType.String
 	}
 
 	return s, nil
@@ -935,7 +927,7 @@ func (m *Manager) GetImportsByFile(filePath string) ([]*model.Import, error) {
 
 func (m *Manager) GetSymbolsByFile(filePath string) ([]*model.Symbol, error) {
 	query := `
-        SELECT id, name, kind, file_path, language, type,
+        SELECT id, name, kind, file_path, language,
                start_line, start_column, start_byte,
                end_line, end_column, end_byte, content_hash
         FROM symbols
@@ -950,17 +942,13 @@ func (m *Manager) GetSymbolsByFile(filePath string) ([]*model.Symbol, error) {
 	var symbols []*model.Symbol
 	for rows.Next() {
 		s := &model.Symbol{}
-		var symbolType sql.NullString
 		err := rows.Scan(
-			&s.ID, &s.Name, &s.Kind, &s.File, &s.Language, &symbolType,
+			&s.ID, &s.Name, &s.Kind, &s.File, &s.Language,
 			&s.Range.Start.Line, &s.Range.Start.Column, &s.Range.Start.Byte,
 			&s.Range.End.Line, &s.Range.End.Column, &s.Range.End.Byte, &s.ContentHash,
 		)
 		if err != nil {
 			return nil, err
-		}
-		if symbolType.Valid {
-			s.Type = symbolType.String
 		}
 		symbols = append(symbols, s)
 	}
@@ -1093,3 +1081,48 @@ func (m *Manager) GetReferencesByFile(filePath string) ([]*model.Reference, erro
 
 	return references, nil
 }
+</final_file_content>
+
+IMPORTANT: For any future changes to this file, use the final_file_content shown above as your reference. This content reflects the current state of the file, including any auto-formatting (e.g., if you used single quotes but the formatter converted them to double quotes). Always base your SEARCH/REPLACE operations on this final version to ensure accuracy.
+
+
+
+New problems detected after saving the file:
+internal/database/manager.go
+- [compiler Error] Line 628: not enough arguments in call to m.SaveFunction
+	have (*model.Function)
+	want (*sql.Tx, *model.Function)
+- [compiler Error] Line 635: not enough arguments in call to m.SaveMethod
+	have (*model.Method)
+	want (*sql.Tx, *model.Method)
+
+internal/database/manager_test.go
+- [compiler Error] Line 293: not enough arguments in call to db.SaveMethod
+	have (*model.Method)
+	want (*sql.Tx, *model.Method)<environment_details>
+# Visual Studio Code Visible Files
+internal/database/manager.go
+
+# Visual Studio Code Open Tabs
+go.mod
+internal/ai/dependency_graph.go
+internal/ai/impact_analyzer.go
+internal/ai/status_tracker.go
+internal/ai/usage_analyzer.go
+internal/mcp/server_test.go
+internal/database/sqlite_fts.go
+internal/model/code_elements.go
+internal/ai/semantic_analyzer.go
+internal/ai/type_validator.go
+internal/core/indexer.go
+internal/database/manager.go
+
+# Current Time
+11/9/2025, 10:02:08 PM (Europe/Sofia, UTC+2:00)
+
+# Context Window Usage
+294,958 / 550K tokens used (54%)
+
+# Current Mode
+ACT MODE
+</environment_details>

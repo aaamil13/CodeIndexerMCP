@@ -306,9 +306,9 @@ func (tv *TypeValidator) CalculateTypeSafetyScore(filePath string) (*model.TypeS
 
 	// Count typed vs untyped symbols
 	for _, sym := range symbols {
-		// Simplified heuristic: A symbol is "typed" if it has a non-empty Signature or Type,
+		// Simplified heuristic: A symbol is "typed" if it has a non-empty Signature,
 		// or if it's a function/method (which inherently have return types/parameters that can be typed).
-		if sym.Signature != "" || sym.Type != "" || sym.Kind == model.SymbolKindFunction || sym.Kind == model.SymbolKindMethod {
+		if sym.Signature != "" || sym.Kind == model.SymbolKindFunction || sym.Kind == model.SymbolKindMethod {
 			score.TypedSymbols++
 		} else {
 			score.UntypedSymbols++
