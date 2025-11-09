@@ -94,10 +94,7 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 		return
 	}
 
-	// Check if we can parse this file
-	if !w.indexer.parsers.CanParse(event.Name) {
-		return
-	}
+	// Language detection is now handled by the Indexer's IndexFile method
 
 	switch {
 	case event.Op&fsnotify.Write == fsnotify.Write:
@@ -158,7 +155,7 @@ func (w *Watcher) handleFileRemoval(filePath string) {
 	}
 
 	// Get file from database
-	file, err := w.indexer.db.GetFileByPath(w.indexer.project.ID, relPath)
+	file, err := w.indexer.dbManager.GetFileByPath(w.indexer.project.ID, relPath)
 	if err != nil {
 		w.logger.Errorf("Failed to get file: %v", err)
 		return
@@ -166,7 +163,7 @@ func (w *Watcher) handleFileRemoval(filePath string) {
 
 	if file != nil {
 		// Delete file from database (cascades to symbols, imports, etc.)
-		if err := w.indexer.db.DeleteFile(file.ID); err != nil {
+		if err := w.indexer.dbManager.DeleteFile(file.ID); err != nil {
 			w.logger.Errorf("Failed to delete file: %v", err)
 		} else {
 			w.logger.Infof("Removed from index: %s", relPath)

@@ -235,6 +235,7 @@ func NewServer(port int) *Server {
 	}
 }
 
+
 func TestIndexer_SymbolDetails(t *testing.T) {
 	indexer, projectPath := setupTestIndexer(t)
 	defer indexer.Close()
