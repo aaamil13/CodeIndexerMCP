@@ -36,29 +36,40 @@ func (ct *ChangeTracker) AnalyzeSymbolChange(change *model.Change) (*model.Chang
 	}
 
 	if change.Symbol == nil {
-		return result, fmt.Errorf("must have a symbol")
+		return result, fmt.Errorf("change must contain a symbol")
 	}
 
-	// Get impact analysis
-	impact, err := ct.impactAnalyzer.AnalyzeChangeImpact(change.Symbol.Name)
+	// Get the full symbol details
+	var fullSymbol interface{}
+	var err error
+	switch change.Symbol.Kind {
+	case model.SymbolKindFunction, model.SymbolKindMethod:
+		fullSymbol, err = ct.db.GetFunctionDetails(change.Symbol.ID)
+	case model.SymbolKindClass:
+		fullSymbol, err = ct.db.GetClassDetails(change.Symbol.ID)
+	default:
+		fullSymbol = change.Symbol // Fallback to base symbol if no specific details are needed/available
+	}
+
 	if err != nil {
-		return nil, err
+		return result, fmt.Errorf("failed to get full symbol details for %s: %w", change.Symbol.ID, err)
+	}
+	if fullSymbol == nil {
+		// If symbol not found in DB, it might be a new symbol being added, or an error.
+		// For now, treat as base symbol.
+		fullSymbol = change.Symbol
 	}
 
-	result.RiskLevel = impact.RiskLevel
-	result.AffectedFiles = impact.AffectedFiles
-	result.AffectedSymbols = impact.AffectedSymbols
 
-	// TODO: Implement analysis logic
-	// // Analyze based on change type
-	// switch change.Type {
-	// case ChangeTypeDelete:
-	// 	ct.analyzeDelete(change, impact, result)
-	// case ChangeTypeRename:
-	// 	ct.analyzeRename(change, impact, result)
-	// case ChangeTypeModify:
-	// 	ct.analyzeModify(change, impact, result)
-	// }
+	// Perform impact analysis based on change type
+	switch change.Type {
+	case model.ChangeTypeDelete:
+		ct.analyzeDelete(change, result)
+	case model.ChangeTypeRename:
+		ct.analyzeRename(change, result)
+	case model.ChangeTypeModify:
+		ct.analyzeModify(change, result)
+	}
 
 	// Determine if can auto-fix
 	result.CanAutoFix = ct.canAutoFix(result)
@@ -67,43 +78,154 @@ func (ct *ChangeTracker) AnalyzeSymbolChange(change *model.Change) (*model.Chang
 }
 
 // analyzeDelete analyzes symbol deletion impact
-func (ct *ChangeTracker) analyzeDelete(change *model.Change, impact *model.ChangeImpact, result *model.ChangeImpact) {
-	// TODO: Implement after DB methods are available
+func (ct *ChangeTracker) analyzeDelete(change *model.Change, result *model.ChangeImpact) {
+	references, err := ct.db.GetReferencesBySymbol(change.Symbol.ID)
+	if err != nil {
+		result.ValidationErrors = append(result.ValidationErrors, &model.ValidationError{
+			Type:     "internal_error",
+			File:     change.File,
+			Line:     change.LineStart,
+			Message:  fmt.Sprintf("Failed to get references for deletion analysis: %v", err),
+			Severity: "error",
+		})
+		return
+	}
+
+	for _, ref := range references {
+		result.BrokenReferences = append(result.BrokenReferences, &model.BrokenReference{
+			ReferencingFile: ref.FilePath,
+			ReferencingLine: ref.Line,
+			SymbolName:      ref.TargetSymbolName,
+			Problem:         fmt.Sprintf("Reference to deleted symbol '%s'", change.Symbol.Name),
+		})
+		result.ValidationErrors = append(result.ValidationErrors, &model.ValidationError{
+			Type:     "breaking_change",
+			File:     ref.FilePath,
+			Line:     ref.Line,
+			Message:  fmt.Sprintf("Symbol '%s' is being deleted, affecting reference in %s:%d", change.Symbol.Name, ref.FilePath, ref.Line),
+			Severity: "error",
+		})
+		result.AffectedFiles = append(result.AffectedFiles, ref.FilePath)
+	}
 }
 
 // analyzeRename analyzes symbol rename impact
-func (ct *ChangeTracker) analyzeRename(change *model.Change, impact *model.ChangeImpact, result *model.ChangeImpact) {
-	// TODO: Implement after DB methods are available
+func (ct *ChangeTracker) analyzeRename(change *model.Change, result *model.ChangeImpact) {
+	if change.OldSymbol == nil || change.NewSymbol == nil {
+		return // Not a valid rename change
+	}
+
+	references, err := ct.db.GetReferencesBySymbol(change.OldSymbol.ID)
+	if err != nil {
+		result.ValidationErrors = append(result.ValidationErrors, &model.ValidationError{
+			Type:     "internal_error",
+			File:     change.File,
+			Line:     change.LineStart,
+			Message:  fmt.Sprintf("Failed to get references for rename analysis: %v", err),
+			Severity: "error",
+		})
+		return
+	}
+
+	for _, ref := range references {
+		// Suggest changing the reference to the new symbol name
+		result.AutoFixSuggestions = append(result.AutoFixSuggestions, &model.AutoFixSuggestion{
+			FilePath: ref.FilePath,
+			Line:     ref.Line,
+			Column:   ref.Column,
+			OldText:  change.OldSymbol.Name,
+			NewText:  change.NewSymbol.Name,
+			Message:  fmt.Sprintf("Rename reference to '%s' to '%s'", change.OldSymbol.Name, change.NewSymbol.Name),
+			Safe:     true, // Renames are generally safe if all references are updated
+		})
+		result.AffectedFiles = append(result.AffectedFiles, ref.FilePath)
+	}
 }
 
 // analyzeModify analyzes symbol modification impact
-func (ct *ChangeTracker) analyzeModify(change *model.Change, impact *model.ChangeImpact, result *model.ChangeImpact) {
+func (ct *ChangeTracker) analyzeModify(change *model.Change, result *model.ChangeImpact) {
+	if change.OldSymbol == nil || change.NewSymbol == nil {
+		return // Not a valid modify change
+	}
+
 	// Check if signature changed
-	if change.OldSymbol != nil && change.Symbol.Signature != change.OldSymbol.Signature {
+	if change.NewSymbol.Signature != change.OldSymbol.Signature {
 		ct.analyzeSignatureChange(change, result)
 	}
 
 	// Check if visibility changed
-	if change.OldSymbol != nil && change.Symbol.Visibility != change.OldSymbol.Visibility {
+	if change.NewSymbol.Visibility != change.OldSymbol.Visibility {
 		ct.analyzeVisibilityChange(change, result)
 	}
 
 	// Check if exported status changed
-	isExportedOld := change.OldSymbol != nil && strings.ToUpper(change.OldSymbol.Name[0:1]) == change.OldSymbol.Name[0:1]
-	isExportedNew := strings.ToUpper(change.Symbol.Name[0:1]) == change.Symbol.Name[0:1]
-	if change.OldSymbol != nil && isExportedOld != isExportedNew {
+	isExportedOld := strings.ToUpper(change.OldSymbol.Name[0:1]) == change.OldSymbol.Name[0:1]
+	isExportedNew := strings.ToUpper(change.NewSymbol.Name[0:1]) == change.NewSymbol.Name[0:1]
+	if isExportedOld != isExportedNew {
 		ct.analyzeExportChange(change, result)
 	}
 }
 
 // analyzeSignatureChange analyzes signature changes
 func (ct *ChangeTracker) analyzeSignatureChange(change *model.Change, result *model.ChangeImpact) {
-	// TODO: Implement after DB methods are available
+	references, err := ct.db.GetReferencesBySymbol(change.NewSymbol.ID)
+	if err != nil {
+		result.ValidationErrors = append(result.ValidationErrors, &model.ValidationError{
+			Type:     "internal_error",
+			File:     change.File,
+			Line:     change.LineStart,
+			Message:  fmt.Sprintf("Failed to get references for signature change analysis: %v", err),
+			Severity: "error",
+		})
+		return
+	}
+
+	for _, ref := range references {
+		// This is a simplified check. A full analysis would compare old and new parameters, return types, etc.
+		result.ValidationErrors = append(result.ValidationErrors, &model.ValidationError{
+			Type:     "breaking_change",
+			File:     ref.FilePath,
+			Line:     ref.Line,
+			Message:  fmt.Sprintf("Signature of '%s' changed from '%s' to '%s', affecting call in %s:%d", change.NewSymbol.Name, change.OldSymbol.Signature, change.NewSymbol.Signature, ref.FilePath, ref.Line),
+			Severity: "warning", // Could be error depending on severity of change
+		})
+		result.AffectedFiles = append(result.AffectedFiles, ref.FilePath)
+	}
 }
 
 // analyzeVisibilityChange analyzes visibility changes
 func (ct *ChangeTracker) analyzeVisibilityChange(change *model.Change, result *model.ChangeImpact) {
-	// TODO: Implement after DB methods are available
+	if change.NewSymbol.Visibility == model.VisibilityPrivate && change.OldSymbol.Visibility != model.VisibilityPrivate {
+		// If a symbol becomes private, any external references will be broken
+		references, err := ct.db.GetReferencesBySymbol(change.NewSymbol.ID)
+		if err != nil {
+			result.ValidationErrors = append(result.ValidationErrors, &model.ValidationError{
+				Type:     "internal_error",
+				File:     change.File,
+				Line:     change.LineStart,
+				Message:  fmt.Sprintf("Failed to get references for visibility change analysis: %v", err),
+				Severity: "error",
+			})
+			return
+		}
+
+		for _, ref := range references {
+			result.BrokenReferences = append(result.BrokenReferences, &model.BrokenReference{
+				ReferencingFile: ref.FilePath,
+				ReferencingLine: ref.Line,
+				SymbolName:      ref.TargetSymbolName,
+				Problem:         fmt.Sprintf("Reference to symbol '%s' which became private", change.NewSymbol.Name),
+			})
+			result.ValidationErrors = append(result.ValidationErrors, &model.ValidationError{
+				Type:     "breaking_change",
+				File:     ref.FilePath,
+				Line:     ref.Line,
+				Message:  fmt.Sprintf("Symbol '%s' changed to private, affecting reference in %s:%d", change.NewSymbol.Name, ref.FilePath, ref.Line),
+				Severity: "error",
+			})
+			result.AffectedFiles = append(result.AffectedFiles, ref.FilePath)
+		}
+	}
 }
 
 // analyzeExportChange analyzes export status changes

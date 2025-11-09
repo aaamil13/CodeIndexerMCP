@@ -19,88 +19,95 @@ func NewDependencyGraphBuilder(db *database.Manager) *DependencyGraphBuilder {
 
 // BuildSymbolDependencyGraph builds a dependency graph for a symbol
 func (dgb *DependencyGraphBuilder) BuildSymbolDependencyGraph(symbolName string, maxDepth int) (*model.DependencyGraph, error) {
-	// TODO: Implement after DB methods are available
-	// symbol, err := dgb.db.GetSymbolByName(symbolName)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// if symbol == nil {
-	// 	return nil, fmt.Errorf("symbol not found: %s", symbolName)
-	// }
+	symbol, err := dgb.db.GetSymbolByName(symbolName)
+	if err != nil {
+		return nil, err
+	}
+	if symbol == nil {
+		return nil, fmt.Errorf("symbol not found: %s", symbolName)
+	}
 
-	// file := symbol.File
+	file := symbol.File
 
-	// graph := &model.DependencyGraph{
-	// 	Nodes: []*model.DependencyNode{},
-	// 	Edges: []*model.DependencyEdge{},
-	// }
+	graph := &model.DependencyGraph{
+		Nodes: []*model.DependencyNode{},
+		Edges: []*model.DependencyEdge{},
+	}
 
-	// visited := make(map[string]bool)
+	visitedNodes := make(map[string]bool)
+	visitedEdges := make(map[string]bool) // To prevent duplicate edges
 
-	// // Add root node
-	// rootNode := &model.DependencyNode{
-	// 	Symbol: symbol,
-	// 	File:   file,
-	// 	Type:   "symbol",
-	// 	Level:  0,
-	// }
-	// graph.Nodes = append(graph.Nodes, rootNode)
-	// visited[symbol.ID] = true
+	// Add root node
+	rootNode := &model.DependencyNode{
+		SymbolID: symbol.ID,
+		Name:     symbol.Name,
+		Kind:     symbol.Kind,
+		File:     file,
+		Type:     "symbol",
+		Level:    0,
+	}
+	graph.Nodes = append(graph.Nodes, rootNode)
+	visitedNodes[symbol.ID] = true
 
-	// // Build graph recursively
-	// dgb.buildGraphRecursive(symbol, graph, visited, 0, maxDepth)
+	dgb.buildGraphRecursive(symbol, graph, visitedNodes, visitedEdges, 0, maxDepth)
 
-	// return graph, nil
-	return nil, fmt.Errorf("not implemented")
+	return graph, nil
 }
 
 // buildGraphRecursive builds graph recursively
-func (dgb *DependencyGraphBuilder) buildGraphRecursive(symbol *model.Symbol, graph *model.DependencyGraph, visited map[string]bool, currentDepth, maxDepth int) {
-	// TODO: Implement after DB methods are available
-	// if currentDepth >= maxDepth {
-	// 	return
-	// }
+func (dgb *DependencyGraphBuilder) buildGraphRecursive(currentSymbol *model.Symbol, graph *model.DependencyGraph, visitedNodes map[string]bool, visitedEdges map[string]bool, currentDepth, maxDepth int) {
+	if currentDepth >= maxDepth {
+		return
+	}
 
-	// // Get relationships
-	// relationships, err := dgb.db.GetRelationshipsForSymbol(symbol.ID)
-	// if err != nil {
-	// 	return
-	// }
+	// Get references where currentSymbol is the source (i.e., currentSymbol depends on target)
+	outgoingReferences, err := dgb.db.GetReferencesBySymbol(currentSymbol.ID)
+	if err != nil {
+		// Log error but continue
+		fmt.Printf("Error getting outgoing references for symbol %s: %v\n", currentSymbol.ID, err)
+	} else {
+		for _, ref := range outgoingReferences {
+			targetSymbol, err := dgb.db.GetSymbolByName(ref.TargetSymbolName) // Assuming target_symbol_name can be resolved to a symbol
+			if err != nil || targetSymbol == nil {
+				// Couldn't resolve target symbol, skip
+				continue
+			}
 
-	// for _, rel := range relationships {
-	// 	var targetSymbolID string
-	// 	var edgeFrom, edgeTo string
+			// Add target node if not visited
+			if !visitedNodes[targetSymbol.ID] {
+				targetNode := &model.DependencyNode{
+					SymbolID: targetSymbol.ID,
+					Name:     targetSymbol.Name,
+					Kind:     targetSymbol.Kind,
+					File:     targetSymbol.File,
+					Type:     "symbol",
+					Level:    currentDepth + 1,
+				}
+				graph.Nodes = append(graph.Nodes, targetNode)
+				visitedNodes[targetSymbol.ID] = true
+			}
 
-	// 	if rel.FromSymbolID == symbol.ID {
-	// 		// This symbol depends on another
-	// 		targetSymbolID = rel.ToSymbolID
-	// 		edgeFrom = fmt.Sprintf("symbol_%s", symbol.ID)
-	// 		edgeTo = fmt.Sprintf("symbol_%s", targetSymbolID)
-	// 	} else {
-	// 		// Another symbol depends on this
-	// 		targetSymbolID = rel.FromSymbolID
-	// 		edgeFrom = fmt.Sprintf("symbol_%s", targetSymbolID)
-	// 		edgeTo = fmt.Sprintf("symbol_%s", symbol.ID)
-	// 	}
+			// Add edge
+			edgeKey := fmt.Sprintf("%s-%s-%s", currentSymbol.ID, targetSymbol.ID, ref.ReferenceType)
+			if !visitedEdges[edgeKey] {
+				edge := &model.DependencyEdge{
+					From:   currentSymbol.ID,
+					To:     targetSymbol.ID,
+					Type:   ref.ReferenceType,
+					Weight: 1, // Default weight
+				}
+				graph.Edges = append(graph.Edges, edge)
+				visitedEdges[edgeKey] = true
+			}
 
-	// 	// Skip if already visited
-	// 	if visited[targetSymbolID] {
-	// 		continue
-	// 	}
+			// Recursively build graph for target symbol
+			dgb.buildGraphRecursive(targetSymbol, graph, visitedNodes, visitedEdges, currentDepth+1, maxDepth)
+		}
+	}
 
-	// 	// Get target symbol (simplified - in production we'd have a better query)
-	// 	// For now, skip if we can't get it
-	// 	visited[targetSymbolID] = true
-
-	// 	// Add edge
-	// 	edge := &model.DependencyEdge{
-	// 		From:   edgeFrom,
-	// 		To:     edgeTo,
-	// 		Type:   string(rel.Type),
-	// 		Weight: 1,
-	// 	}
-	// 	graph.Edges = append(graph.Edges, edge)
-	// }
+	// Get references where currentSymbol is the target (i.e., target depends on currentSymbol)
+	// This part would require a GetDependentsBySymbol method in database.Manager, or a more complex query.
+	// For now, we focus on outgoing dependencies as 'dependencies' typically refers to what a component needs.
 }
 
 // BuildFileDependencyGraph builds a dependency graph for a file
@@ -117,91 +124,89 @@ func (dgb *DependencyGraphBuilder) BuildFileDependencyGraph(filePath string, max
 
 // GetDependenciesFor gets all dependencies for a symbol
 func (dgb *DependencyGraphBuilder) GetDependenciesFor(symbolName string) ([]*model.Symbol, error) {
-	// TODO: Implement after DB methods are available
-	// symbol, err := dgb.db.GetSymbolByName(symbolName)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// if symbol == nil {
-	// 	return nil, fmt.Errorf("symbol not found: %s", symbolName)
-	// }
+	symbol, err := dgb.db.GetSymbolByName(symbolName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get symbol by name %s: %w", symbolName, err)
+	}
+	if symbol == nil {
+		return nil, fmt.Errorf("symbol not found: %s", symbolName)
+	}
 
-	// dependencies := []*model.Symbol{}
-	// visited := make(map[string]bool)
+	dependencies := []*model.Symbol{}
+	visited := make(map[string]bool) // Track visited symbols to avoid infinite loops and duplicates
 
-	// dgb.collectDependencies(symbol, &dependencies, visited, 0, 5)
+	// Collect direct outgoing dependencies (what this symbol references)
+	dgb.collectDependencies(symbol, &dependencies, visited, 0, 5) // Max depth of 5 for collecting
 
-	// return dependencies, nil
-	return nil, fmt.Errorf("not implemented")
+	return dependencies, nil
 }
 
 // collectDependencies collects dependencies recursively
-func (dgb *DependencyGraphBuilder) collectDependencies(symbol *model.Symbol, deps *[]*model.Symbol, visited map[string]bool, depth, maxDepth int) {
-	// TODO: Implement after DB methods are available
-	// if depth >= maxDepth || visited[symbol.ID] {
-	// 	return
-	// }
+func (dgb *DependencyGraphBuilder) collectDependencies(currentSymbol *model.Symbol, deps *[]*model.Symbol, visited map[string]bool, depth, maxDepth int) {
+	if depth >= maxDepth || visited[currentSymbol.ID] {
+		return
+	}
 
-	// visited[symbol.ID] = true
+	visited[currentSymbol.ID] = true
+	*deps = append(*deps, currentSymbol)
 
-	// relationships, err := dgb.db.GetRelationshipsForSymbol(symbol.ID)
-	// if err != nil {
-	// 	return
-	// }
+	// Get outgoing references (what currentSymbol uses)
+	references, err := dgb.db.GetReferencesBySymbol(currentSymbol.ID)
+	if err != nil {
+		fmt.Printf("Error getting references for symbol %s: %v\n", currentSymbol.ID, err)
+		return
+	}
 
-	// for _, rel := range relationships {
-	// 	// Only follow outgoing dependencies (what this symbol uses)
-	// 	if rel.FromSymbolID == symbol.ID {
-	// 		// In production, we'd fetch the target symbol properly
-	// 		// For now, this is a placeholder
-	// 		visited[rel.ToSymbolID] = true
-	// 	}
-	// }
+	for _, ref := range references {
+		targetSymbol, err := dgb.db.GetSymbolByName(ref.TargetSymbolName) // Assuming target_symbol_name is resolvable
+		if err != nil || targetSymbol == nil {
+			continue // Skip if target symbol cannot be found
+		}
+		dgb.collectDependencies(targetSymbol, deps, visited, depth+1, maxDepth)
+	}
 }
 
 // GetDependentsFor gets all dependents (who depends on this symbol)
 func (dgb *DependencyGraphBuilder) GetDependentsFor(symbolName string) ([]*model.Symbol, error) {
-	// TODO: Implement after DB methods are available
-	// symbol, err := dgb.db.GetSymbolByName(symbolName)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// if symbol == nil {
-	// 	return nil, fmt.Errorf("symbol not found: %s", symbolName)
-	// }
+	symbol, err := dgb.db.GetSymbolByName(symbolName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get symbol by name %s: %w", symbolName, err)
+	}
+	if symbol == nil {
+		return nil, fmt.Errorf("symbol not found: %s", symbolName)
+	}
 
-	// // Get all references (simpler approach)
-	// references, err := dgb.db.GetReferencesBySymbol(symbol.ID)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	// Get all references where this symbol is the target
+	// This requires a new database method to efficiently query references by target_symbol_name
+	// For now, we'll iterate through all symbols and their references (inefficient but works for now)
+	// A more efficient approach would be to have an index on target_symbol_name in the references table.
+	// (Which we have already created as idx_code_reference_target)
+	
+	dependents := []*model.Symbol{}
+	visited := make(map[string]bool)
 
-	// dependents := []*model.Symbol{}
-	// seenFiles := make(map[string]bool)
+	// This assumes GetReferencesBySymbol returns references where either source or target matches symbolID
+	// which is how GetReferencesBySymbol is currently implemented.
+	references, err := dgb.db.GetReferencesBySymbol(symbol.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get references for symbol %s: %w", symbol.ID, err)
+	}
 
-	// for _, ref := range references {
-	// 	if seenFiles[ref.FilePath] {
-	// 		continue
-	// 	}
-	// 	seenFiles[ref.FilePath] = true
+	for _, ref := range references {
+		// If our symbol is the target, then ref.SourceSymbolID is a dependent
+		if ref.TargetSymbolName == symbolName { // Assuming TargetSymbolName stores the actual name, not ID
+			dependentSymbol, err := dgb.db.GetSymbol(ref.SourceSymbolID)
+			if err != nil || dependentSymbol == nil {
+				continue // Skip if source symbol cannot be found
+			}
+			if !visited[dependentSymbol.ID] {
+				dependents = append(dependents, dependentSymbol)
+				visited[dependentSymbol.ID] = true
+			}
+		}
+	}
 
-	// 	// Get all symbols in this file that might depend on our symbol
-	// 	symbols, err := dgb.db.GetSymbolsByFile(ref.FilePath)
-	// 	if err != nil {
-	// 		continue
-	// 	}
-
-	// 	for _, sym := range symbols {
-	// 		// Check if this symbol contains the reference
-	// 		if sym.Range.Start.Line <= ref.Line && sym.Range.End.Line >= ref.Line {
-	// 			dependents = append(dependents, sym)
-	// 			break
-	// 		}
-	// 	}
-	// }
-
-	// return dependents, nil
-	return nil, fmt.Errorf("not implemented")
+	return dependents, nil
 }
 
 // AnalyzeDependencyChain analyzes the full dependency chain

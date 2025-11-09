@@ -126,8 +126,72 @@ func (pe *PythonExtractor) buildSignature(name string, params []model.Parameter,
 }
 
 func (pe *PythonExtractor) parseParametersFromNode(paramsNode *sitter.Node, source []byte) []model.Parameter {
-	// TODO: Implement this function
-	return []model.Parameter{}
+	if paramsNode == nil || paramsNode.Type() != "parameters" {
+		return []model.Parameter{}
+	}
+
+	var parameters []model.Parameter
+	for i := 0; i < int(paramsNode.ChildCount()); i++ {
+		child := paramsNode.Child(i)
+		if child == nil {
+			continue
+		}
+
+		// A parameter can be an identifier, or a typed_parameter, or default_parameter, etc.
+		// We'll try to handle common cases.
+		var paramName, paramType, defaultValue string
+		isOptional := false
+		isVariadic := false
+
+		if child.Type() == "identifier" {
+			paramName = child.Content(source)
+		} else if child.Type() == "typed_parameter" || child.Type() == "default_parameter" || child.Type() == "typed_default_parameter" {
+			// Find identifier and type annotation (if any)
+			for j := 0; j < int(child.ChildCount()); j++ {
+				grandChild := child.Child(j)
+				if grandChild == nil {
+					continue
+				}
+				if grandChild.Type() == "identifier" {
+					paramName = grandChild.Content(source)
+				} else if grandChild.Type() == "type" { // Type annotation
+					paramType = grandChild.Content(source)
+				} else if grandChild.Type() == "default_value" { // Default value
+					defaultValue = grandChild.Content(source)
+					isOptional = true
+				} else if grandChild.Type() == "expression" && grandChild.NamedChild(0) != nil && grandChild.NamedChild(0).Type() == "identifier" {
+					// Handle cases like `param: Type = expression`
+					// The `expression` node might contain the default value
+					if strings.Contains(child.Content(source), "=") {
+						parts := strings.SplitN(child.Content(source), "=", 2)
+						if len(parts) == 2 {
+							defaultValue = strings.TrimSpace(parts[1])
+							isOptional = true
+						}
+					}
+				}
+			}
+		} else if child.Type() == "list_splat_pattern" || child.Type() == "dictionary_splat_pattern" {
+			// e.g., *args or **kwargs
+			paramName = child.Content(source)
+			isVariadic = true
+		} else if child.Type() == "keyword_separator" || child.Type() == "positional_separator" {
+			// '/' or '*'
+			paramName = child.Content(source)
+		}
+
+		if paramName != "" {
+			parameters = append(parameters, model.Parameter{
+				Name:        paramName,
+				Type:        paramType,
+				DefaultValue: defaultValue,
+				Position:    i,
+				IsOptional:  isOptional,
+				IsVariadic:  isVariadic,
+			})
+		}
+	}
+	return parameters
 }
 
 func (pe *PythonExtractor) ExtractClasses(parseResult *parsing.ParseResult, filePath string) ([]*model.Class, error) {

@@ -23,63 +23,66 @@ func NewMetricsCalculator(db *database.Manager) *MetricsCalculator {
 
 // CalculateMetrics calculates metrics for a symbol
 func (mc *MetricsCalculator) CalculateMetrics(symbol *model.Symbol) (*model.CodeMetrics, error) {
-	// TODO: Implement after DB methods are available
-	// // Get the symbol
-	// if symbol == nil {
-	// 	return nil, fmt.Errorf("symbol cannot be nil")
-	// }
+	if symbol == nil {
+		return nil, fmt.Errorf("symbol cannot be nil")
+	}
 
-	// // Get file
-	// file := symbol.File
+	// Get file
+	file := symbol.File
 
-	// // Extract code
-	// code, err := mc.extractCode(file, symbol.Range.Start.Line, symbol.Range.End.Line)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	// Extract code
+	code, err := mc.extractCode(file, symbol.Range.Start.Line, symbol.Range.End.Line)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract code for symbol %s: %w", symbol.Name, err)
+	}
 
-	// // Calculate metrics
-	// loc := symbol.Range.End.Line - symbol.Range.Start.Line + 1
-	// cyclomaticComplexity := mc.calculateCyclomaticComplexity(code, symbol.Language)
-	// cognitiveComplexity := mc.calculateCognitiveComplexity(code, symbol.Language)
-	// maxNestingDepth := mc.calculateMaxNestingDepth(code, symbol.Language)
-	// parameters := mc.countParameters(symbol.Signature)
-	// returnStatements := mc.countReturnStatements(code)
-	// commentDensity := mc.calculateCommentDensity(code, symbol.Language)
-	// hasDocumentation := symbol.Documentation != ""
+	// Calculate metrics
+	loc := symbol.Range.End.Line - symbol.Range.Start.Line + 1
+	cyclomaticComplexity := mc.calculateCyclomaticComplexity(code, symbol.Language)
+	cognitiveComplexity := mc.calculateCognitiveComplexity(code, symbol.Language)
+	maxNestingDepth := mc.calculateMaxNestingDepth(code, symbol.Language)
+	parameters := mc.countParameters(symbol.Signature)
+	returnStatements := mc.countReturnStatements(code)
+	commentDensity := mc.calculateCommentDensity(code, symbol.Language)
+	hasDocumentation := symbol.Documentation != ""
 
-	// // Calculate maintainability index
-	// // Formula: 171 - 5.2 * ln(HV) - 0.23 * CC - 16.2 * ln(LOC)
-	// // Simplified version
-	// maintainability := 100.0
-	// if loc > 0 {
-	// 	maintainability = 171.0 - 5.2*float64(cyclomaticComplexity) - 0.23*float64(cyclomaticComplexity) - 16.2*float64(loc)/10.0
-	// 	if maintainability < 0 {
-	// 		maintainability = 0
-	// 	}
-	// 	if maintainability > 100 {
-	// 		maintainability = 100
-	// 	}
-	// }
+	// Calculate maintainability index
+	// Formula: 171 - 5.2 * ln(HV) - 0.23 * CC - 16.2 * ln(LOC)
+	// Simplified version
+	maintainability := 100.0
+	if loc > 0 {
+		// Use cyclomaticComplexity for CC, but adjust for log of LOC for HV
+		// This is a very simplified formula and might need fine-tuning
+		maintainability = 171.0 - 5.2*float64(cyclomaticComplexity) - 0.23*float64(cognitiveComplexity)
+		if loc > 1 { // Avoid log(0) or log(1) issues, use a small value if LOC is very small
+			maintainability -= 16.2 * (float64(loc) / 10.0) // Simplified log(LOC)
+		}
 
-	// // Determine quality
-	// quality := mc.determineQuality(cyclomaticComplexity, cognitiveComplexity, maintainability, hasDocumentation)
+		if maintainability < 0 {
+			maintainability = 0
+		}
+		if maintainability > 100 {
+			maintainability = 100
+		}
+	}
 
-	// return &model.CodeMetrics{
-	// 	FilePath:             file,
-	// 	FunctionName:         symbol.Name,
-	// 	LinesOfCode:          loc,
-	// 	CyclomaticComplexity: cyclomaticComplexity,
-	// 	CognitiveComplexity:  cognitiveComplexity,
-	// 	MaintainabilityIndex: maintainability,
-	// 	Parameters:           parameters,
-	// 	ReturnStatements:     returnStatements,
-	// 	MaxNestingDepth:      maxNestingDepth,
-	// 	CommentDensity:       commentDensity,
-	// 	HasDocumentation:     hasDocumentation,
-	// 	Quality:              quality,
-	// }, nil
-	return nil, fmt.Errorf("not implemented")
+	// Determine quality
+	quality := mc.determineQuality(cyclomaticComplexity, cognitiveComplexity, maintainability, hasDocumentation)
+
+	return &model.CodeMetrics{
+		FilePath:             file,
+		FunctionName:         symbol.Name,
+		LinesOfCode:          loc,
+		CyclomaticComplexity: cyclomaticComplexity,
+		CognitiveComplexity:  cognitiveComplexity,
+		MaintainabilityIndex: maintainability,
+		Parameters:           parameters,
+		ReturnStatements:     returnStatements,
+		MaxNestingDepth:      maxNestingDepth,
+		CommentDensity:       commentDensity,
+		HasDocumentation:     hasDocumentation,
+		Quality:              quality,
+	}, nil
 }
 
 // calculateCyclomaticComplexity calculates cyclomatic complexity
@@ -306,28 +309,25 @@ func (mc *MetricsCalculator) extractCode(filePath string, startLine, endLine int
 
 // CalculateFileMetrics calculates metrics for an entire file
 func (mc *MetricsCalculator) CalculateFileMetrics(filePath string) ([]*model.CodeMetrics, error) {
-	// TODO: Implement after DB methods are available
-	// // Get file
-	// file := filePath
+	// Get all symbols in file
+	symbols, err := mc.db.GetSymbolsByFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get symbols for file %s: %w", filePath, err)
+	}
 
-	// // Get all symbols in file
-	// symbols, err := mc.db.GetSymbolsByFile(file)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	metrics := []*model.CodeMetrics{}
+	for _, symbol := range symbols {
+		// Only calculate metrics for functions and methods
+		if symbol.Kind == model.SymbolKindFunction || symbol.Kind == model.SymbolKindMethod {
+			metric, err := mc.CalculateMetrics(symbol)
+			if err != nil {
+				// Log error but continue with other symbols
+				fmt.Printf("Warning: Failed to calculate metrics for symbol %s in file %s: %v\n", symbol.Name, filePath, err)
+				continue
+			}
+			metrics = append(metrics, metric)
+		}
+	}
 
-	// metrics := []*model.CodeMetrics{}
-	// for _, symbol := range symbols {
-	// 	// TODO: Check symbol kind for function/method
-	// 	// if symbol.Type == types.SymbolTypeFunction || symbol.Type == types.SymbolTypeMethod {
-	// 	metric, err := mc.CalculateMetrics(symbol)
-	// 	if err != nil {
-	// 		continue // Skip on error
-	// 	}
-	// 	metrics = append(metrics, metric)
-	// 	// }
-	// }
-
-	// return metrics, nil
-	return nil, fmt.Errorf("not implemented")
+	return metrics, nil
 }

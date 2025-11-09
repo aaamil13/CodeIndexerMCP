@@ -22,208 +22,229 @@ func NewTypeValidator(db *database.Manager) *TypeValidator {
 
 // ValidateFile validates all types in a file
 func (tv *TypeValidator) ValidateFile(filePath string) (*model.TypeValidation, error) {
-	// TODO: Implement after DB methods are available
-	// validation := &model.TypeValidation{
-	// 	File:             filePath,
-	// 	IsValid:          true,
-	// 	UndefinedSymbols: make([]*model.UndefinedUsage, 0),
-	// 	TypeMismatches:   make([]*model.TypeMismatch, 0),
-	// 	MissingMethods:   make([]*model.MissingMethod, 0),
-	// 	InvalidCalls:     make([]*model.InvalidCall, 0),
-	// 	UnusedImports:    make([]*model.Import, 0),
-	// 	Suggestions:      make([]string, 0),
-	// }
+	validation := &model.TypeValidation{
+		File:             filePath,
+		IsValid:          true,
+		UndefinedSymbols: make([]*model.UndefinedUsage, 0),
+		TypeMismatches:   make([]*model.TypeMismatch, 0),
+		MissingMethods:   make([]*model.MissingMethod, 0),
+		InvalidCalls:     make([]*model.InvalidCall, 0),
+		UnusedImports:    make([]*model.Import, 0),
+		Suggestions:      make([]string, 0),
+	}
 
-	// // Get all symbols in this file
-	// symbols, err := tv.db.GetSymbolsByFile(filePath)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to get symbols: %w", err)
-	// }
+	// Get all symbols in this file
+	symbols, err := tv.db.GetSymbolsByFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get symbols for file %s: %w", filePath, err)
+	}
 
-	// // Get all references in this file
-	// references, err := tv.db.GetReferencesByFile(filePath)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to get references: %w", err)
-	// }
+	// Get all references in this file
+	references, err := tv.db.GetReferencesByFile(filePath) // Assuming GetReferencesByFile exists and returns references where SourceSymbolID is in this file.
+	if err != nil {
+		fmt.Printf("Warning: Failed to get references for file %s: %v\n", filePath, err)
+		references = []*model.Reference{} // Non-fatal
+	}
 
-	// // Build symbol map for quick lookup
-	// symbolMap := make(map[string]*model.Symbol)
-	// for _, sym := range symbols {
-	// 	symbolMap[sym.Name] = sym
-	// }
+	// Build symbol map for quick lookup
+	symbolMap := make(map[string]*model.Symbol) // Map symbol name to symbol for faster lookup
+	symbolIDMap := make(map[string]*model.Symbol) // Map symbol ID to symbol
+	for _, sym := range symbols {
+		symbolMap[sym.Name] = sym
+		symbolIDMap[sym.ID] = sym
+	}
 
-	// // Check each reference
-	// for _, ref := range references {
-	// 	// Get the referenced symbol
-	// 	refSymbol, err := tv.db.GetSymbol(ref.SourceSymbolID) // Assuming SourceSymbolID is the referenced symbol
-	// 	if err != nil {
-	// 		// Symbol not found - undefined usage
-	// 		context := ref.ReferenceType
+	// Check each reference
+	for _, ref := range references {
+		// Try to resolve the referenced symbol
+		referencedSymbol, err := tv.db.GetSymbolByName(ref.TargetSymbolName) // Try by name first
+		if err != nil || referencedSymbol == nil {
+			// If not found by name, it might be an undefined usage
+			undefined := &model.UndefinedUsage{
+				SymbolName:  ref.TargetSymbolName,
+				FilePath:    filePath,
+				Line:        ref.Line,
+				Description: fmt.Sprintf("Reference to undefined symbol '%s'", ref.TargetSymbolName),
+				// UsageType:   tv.inferUsageType(ref.ReferenceType), // Inferring usage type from reference type string
+			}
+			// Find similar symbols (typo suggestions)
+			similar := tv.findSimilarSymbols(ref.TargetSymbolName, symbols) // Search within current file symbols
+			if len(similar) > 0 {
+				undefined.Description += fmt.Sprintf(". Did you mean '%s'?", similar[0].Name)
+			}
+			validation.UndefinedSymbols = append(validation.UndefinedSymbols, undefined)
+			validation.IsValid = false
+			continue
+		}
 
-	// 		undefined := &model.UndefinedUsage{
-	// 			SymbolName:  "unknown",
-	// 			FilePath:    filePath,
-	// 			Line:        ref.Line,
-	// 			Description: context,
-	// 		}
+		// Validate the reference based on symbol types (simplified for now)
+		// This is where more complex type checking logic would go.
+		// For example, if ref.ReferenceType indicates a function call,
+		// ensure referencedSymbol is a function and check argument count/types.
+		// tv.validateReference(ref, referencedSymbol, filePath, validation)
+	}
 
-	// 		// Try to extract symbol name from context
-	// 		if context != "" {
-	// 			name := tv.extractSymbolNameFromContext(context)
-	// 			undefined.SymbolName = name
-	// 			// undefined.UsageType = tv.inferUsageType(context) // No direct equivalent for UsageType
+	// Check for unused imports
+	imports, err := tv.db.GetImportsByFile(filePath)
+	if err == nil {
+		for _, imp := range imports {
+			if !tv.isImportUsed(imp, references) {
+				validation.UnusedImports = append(validation.UnusedImports, imp)
+				validation.Suggestions = append(validation.Suggestions,
+					fmt.Sprintf("Import '%s' is unused and can be removed", imp.Path))
+			}
+		}
+	}
 
-	// 			// Find similar symbols (typo suggestions)
-	// 			similar := tv.findSimilarSymbols(name, symbols)
-	// 			if len(similar) > 0 {
-	// 				// undefined.PossibleMatches = similar // No direct equivalent for PossibleMatches
-	// 				undefined.Description = fmt.Sprintf("Did you mean '%s'?", similar[0].Name)
-	// 			}
-	// 		}
+	// Generate summary suggestions
+	if len(validation.UndefinedSymbols) > 0 {
+		validation.Suggestions = append(validation.Suggestions,
+			fmt.Sprintf("Found %d undefined symbols. Check for typos or missing imports.",
+				len(validation.UndefinedSymbols)))
+	}
 
-	// 		validation.UndefinedSymbols = append(validation.UndefinedSymbols, undefined)
-	// 		validation.IsValid = false
-	// 		continue
-	// 	}
+	if len(validation.TypeMismatches) > 0 {
+		validation.Suggestions = append(validation.Suggestions,
+			fmt.Sprintf("Found %d type mismatches. Review type conversions.",
+				len(validation.TypeMismatches)))
+	}
 
-	// 	// Validate the reference based on symbol type
-	// 	tv.validateReference(ref, refSymbol, filePath, validation)
-	// }
-
-	// // Check for unused imports
-	// imports, err := tv.db.GetImportsByFile(filePath)
-	// if err == nil {
-	// 	for _, imp := range imports {
-	// 		if !tv.isImportUsed(imp, references) {
-	// 			validation.UnusedImports = append(validation.UnusedImports, imp)
-	// 			validation.Suggestions = append(validation.Suggestions,
-	// 				fmt.Sprintf("Import '%s' is unused and can be removed", imp.Path))
-	// 		}
-	// 	}
-	// }
-
-	// // Generate summary suggestions
-	// if len(validation.UndefinedSymbols) > 0 {
-	// 	validation.Suggestions = append(validation.Suggestions,
-	// 		fmt.Sprintf("Found %d undefined symbols. Check for typos or missing imports.",
-	// 			len(validation.UndefinedSymbols)))
-	// }
-
-	// if len(validation.TypeMismatches) > 0 {
-	// 	validation.Suggestions = append(validation.Suggestions,
-	// 		fmt.Sprintf("Found %d type mismatches. Review type conversions.",
-	// 			len(validation.TypeMismatches)))
-	// }
-
-	// return validation, nil
-	return nil, fmt.Errorf("not implemented")
+	return validation, nil
 }
 
 // FindUndefinedUsages finds all undefined symbols in a file
 func (tv *TypeValidator) FindUndefinedUsages(filePath string) ([]*model.UndefinedUsage, error) {
-	// TODO: Implement after DB methods are available
-	// validation, err := tv.ValidateFile(filePath)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// return validation.UndefinedSymbols, nil
-	return nil, fmt.Errorf("not implemented")
+	validation, err := tv.ValidateFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	return validation.UndefinedSymbols, nil
 }
 
 // CheckMethodExists checks if a method exists on a type
 func (tv *TypeValidator) CheckMethodExists(typeName, methodName string, projectID string) (*model.MissingMethod, error) {
-	// TODO: Implement after DB methods are available
-	// // Find the type symbol
-	// typeSymbol, err := tv.db.GetSymbolByName(typeName)
-	// if err != nil {
-	// 	return &model.MissingMethod{
-	// 		TypeName:   typeName,
-	// 		MethodName: methodName,
-	// 		Suggestion: fmt.Sprintf("Type '%s' not found", typeName),
-	// 	}, nil
-	// }
+	// Find the type symbol
+	typeSymbol, err := tv.db.GetSymbolByName(typeName)
+	if err != nil {
+		return &model.MissingMethod{
+			TypeName:   typeName,
+			MethodName: methodName,
+			Suggestion: fmt.Sprintf("Failed to retrieve type '%s': %v", typeName, err),
+		}, nil
+	}
+	if typeSymbol == nil {
+		return &model.MissingMethod{
+			TypeName:   typeName,
+			MethodName: methodName,
+			Suggestion: fmt.Sprintf("Type '%s' not found", typeName),
+		}, nil
+	}
 
-	// // Find methods of this type
-	// methods, err := tv.db.GetMethodsForType(typeSymbol.ID)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	// Find methods of this type
+	methods, err := tv.db.GetMethodsForType(typeSymbol.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get methods for type %s: %w", typeName, err)
+	}
 
-	// // Check if method exists
-	// for _, method := range methods {
-	// 	if method.Name == methodName {
-	// 		return nil, nil // Method exists
-	// 	}
-	// }
+	// Check if method exists
+	for _, method := range methods {
+		if method.Name == methodName {
+			return nil, nil // Method exists
+		}
+	}
 
-	// // Method doesn't exist - build response
-	// missing := &model.MissingMethod{
-	// 	TypeName:         typeName,
-	// 	MethodName:       methodName,
-	// 	AvailableMethods: make([]string, 0),
-	// }
+	// Method doesn't exist - build response
+	missing := &model.MissingMethod{
+		TypeName:         typeName,
+		MethodName:       methodName,
+		AvailableMethods: make([]string, 0),
+	}
 
-	// // List available methods
-	// for _, method := range methods {
-	// 	missing.AvailableMethods = append(missing.AvailableMethods, method.Name)
-	// }
+	// List available methods
+	for _, method := range methods {
+		missing.AvailableMethods = append(missing.AvailableMethods, method.Name)
+	}
 
-	// // Find similar method names
-	// similar := tv.findSimilarMethodName(methodName, methods)
-	// if similar != nil {
-	// 	missing.Suggestion = fmt.Sprintf("Did you mean '%s'?", similar.Name)
-	// }
+	// Find similar method names
+	similar := tv.findSimilarMethodName(methodName, methods)
+	if similar != nil {
+		missing.Suggestion = fmt.Sprintf("Did you mean '%s'?", similar.Name)
+	} else if len(methods) > 0 {
+		missing.Suggestion = fmt.Sprintf("Available methods for '%s': %s", typeName, strings.Join(missing.AvailableMethods, ", "))
+	} else {
+		missing.Suggestion = fmt.Sprintf("No methods found for type '%s'", typeName)
+	}
 
-	// return missing, nil
-	return nil, fmt.Errorf("not implemented")
+	return missing, nil
 }
 
 // ValidateSymbolTypes validates types for a specific symbol
-func (tv *TypeValidator) ValidateSymbolTypes(symbolID string) (*TypeValidation, error) {
-	// TODO: Implement after DB methods are available
-	// symbol, err := tv.db.GetSymbol(symbolID)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to get symbol: %w", err)
-	// }
+func (tv *TypeValidator) ValidateSymbolTypes(symbolID string) (*model.TypeValidation, error) {
+	symbol, err := tv.db.GetSymbol(symbolID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get symbol %s: %w", symbolID, err)
+	}
+	if symbol == nil {
+		return nil, fmt.Errorf("symbol not found: %s", symbolID)
+	}
 
-	// file := symbol.File
+	file := symbol.File
 
-	// validation := &TypeValidation{
-	// 	File:             file,
-	// 	Symbol:           symbol,
-	// 	IsValid:          true,
-	// 	UndefinedSymbols: make([]*UndefinedUsage, 0),
-	// 	TypeMismatches:   make([]*TypeMismatch, 0),
-	// 	MissingMethods:   make([]*MissingMethod, 0),
-	// 	InvalidCalls:     make([]*InvalidCall, 0),
-	// 	Suggestions:      make([]string, 0),
-	// }
+	validation := &model.TypeValidation{
+		File:             file,
+		Symbol:           symbol,
+		IsValid:          true,
+		UndefinedSymbols: make([]*model.UndefinedUsage, 0),
+		TypeMismatches:   make([]*model.TypeMismatch, 0),
+		MissingMethods:   make([]*model.MissingMethod, 0),
+		InvalidCalls:     make([]*model.InvalidCall, 0),
+		Suggestions:      make([]string, 0),
+	}
 
-	// // Get all calls made by this symbol
-	// relationships, err := tv.db.GetRelationshipsForSymbol(symbolID)
-	// if err != nil {
-	// 	return validation, nil
-	// }
+	// This part needs `GetRelationshipsForSymbol` implemented in `database.Manager`.
+	// For now, we will simulate or use references as a proxy.
+	// Assume references where SourceSymbolID == symbol.ID are "calls" or usages by this symbol.
+	references, err := tv.db.GetReferencesBySymbol(symbol.ID)
+	if err != nil {
+		fmt.Printf("Warning: Failed to get references for symbol %s for validation: %v\n", symbol.ID, err)
+		return validation, nil // Return current validation with a warning
+	}
 
-	// for _, rel := range relationships {
-	// 	if rel.ReferenceType == "calls" { // Use ReferenceType from model.Reference
-	// 		// Check if the called symbol exists
-	// 		_, err := tv.db.GetSymbol(rel.TargetSymbolName) // Assuming TargetSymbolName is the ID
-	// 		if err != nil {
-	// 			// Called symbol doesn't exist
-	// 			undefined := &UndefinedUsage{
-	// 				SymbolName:  "unknown",
-	// 				FilePath:    file,
-	// 				Description: "function", // No direct equivalent for UsageType
-	// 			}
-	// 			validation.UndefinedSymbols = append(validation.UndefinedSymbols, undefined)
-	// 			validation.IsValid = false
-	// 		}
-	// 	}
-	// }
+	for _, ref := range references {
+		// Only consider "call" relationships for now
+		if ref.ReferenceType == model.ReferenceTypeCalls {
+			calledSymbol, err := tv.db.GetSymbolByName(ref.TargetSymbolName)
+			if err != nil || calledSymbol == nil {
+				// Called symbol doesn't exist - undefined usage
+				undefined := &model.UndefinedUsage{
+					SymbolName:  ref.TargetSymbolName,
+					FilePath:    file,
+					Line:        ref.Line,
+					Description: fmt.Sprintf("Function/method '%s' called by '%s' is undefined", ref.TargetSymbolName, symbol.Name),
+				}
+				validation.UndefinedSymbols = append(validation.UndefinedSymbols, undefined)
+				validation.IsValid = false
+			} else {
+				// Basic type validation for calls
+				// This would involve checking if calledSymbol is actually a function/method
+				// and if the number/types of arguments match. This is highly language-specific.
+				if calledSymbol.Kind != model.SymbolKindFunction && calledSymbol.Kind != model.SymbolKindMethod {
+					invalidCall := &model.InvalidCall{
+						CallerSymbol: symbol.Name,
+						CalledSymbol: calledSymbol.Name,
+						FilePath:     file,
+						Line:         ref.Line,
+						Column:       ref.Column,
+						Message:      fmt.Sprintf("Symbol '%s' (kind: %s) is not a callable function/method", calledSymbol.Name, calledSymbol.Kind),
+					}
+					validation.InvalidCalls = append(validation.InvalidCalls, invalidCall)
+					validation.IsValid = false
+				}
+			}
+		}
+	}
 
-	// return validation, nil
-	return nil, fmt.Errorf("not implemented")
+	return validation, nil
 }
 
 // CheckTypeCompatibility checks if two types are compatible
@@ -265,68 +286,69 @@ func (tv *TypeValidator) CheckTypeCompatibility(type1, type2 string) bool {
 
 // CalculateTypeSafetyScore calculates type safety score for a file or project
 func (tv *TypeValidator) CalculateTypeSafetyScore(filePath string) (*model.TypeSafetyScore, error) {
-	// TODO: Implement after DB methods are available
-	// validation, err := tv.ValidateFile(filePath)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	validation, err := tv.ValidateFile(filePath)
+	if err != nil {
+		return nil, err
+	}
 
-	// symbols, err := tv.db.GetSymbolsByFile(filePath)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	symbols, err := tv.db.GetSymbolsByFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get symbols for file %s: %w", filePath, err)
+	}
 
-	// score := &model.TypeSafetyScore{
-	// 	TotalSymbols:   len(symbols),
-	// 	TypedSymbols:   0,
-	// 	UntypedSymbols: 0,
-	// 	ErrorCount:     len(validation.UndefinedSymbols) + len(validation.TypeMismatches),
-	// 	WarningCount:   len(validation.InvalidCalls),
-	// }
+	score := &model.TypeSafetyScore{
+		TotalSymbols:   len(symbols),
+		TypedSymbols:   0,
+		UntypedSymbols: 0,
+		ErrorCount:     len(validation.UndefinedSymbols) + len(validation.TypeMismatches),
+		WarningCount:   len(validation.InvalidCalls) + len(validation.MissingMethods),
+	}
 
-	// // Count typed vs untyped symbols
-	// for _, sym := range symbols {
-	// 	if sym.Signature != "" || sym.Kind == "function" || sym.Kind == "method" { // Use Kind from model.Symbol
-	// 		score.TypedSymbols++
-	// 	} else {
-	// 		score.UntypedSymbols++
-	// 	}
-	// }
+	// Count typed vs untyped symbols
+	for _, sym := range symbols {
+		// Simplified heuristic: A symbol is "typed" if it has a non-empty Signature or Type,
+		// or if it's a function/method (which inherently have return types/parameters that can be typed).
+		if sym.Signature != "" || sym.Type != "" || sym.Kind == model.SymbolKindFunction || sym.Kind == model.SymbolKindMethod {
+			score.TypedSymbols++
+		} else {
+			score.UntypedSymbols++
+		}
+	}
 
-	// // Calculate score (0-100)
-	// if score.TotalSymbols == 0 {
-	// 	score.Score = 100.0
-	// } else {
-	// 	typedRatio := float64(score.TypedSymbols) / float64(score.TotalSymbols)
-	// 	errorPenalty := float64(score.ErrorCount) * 5.0
-	// 	warningPenalty := float64(score.WarningCount) * 2.0
+	// Calculate score (0-100)
+	if score.TotalSymbols == 0 {
+		score.Score = 100.0
+	} else {
+		typedRatio := float64(score.TypedSymbols) / float64(score.TotalSymbols)
+		errorPenalty := float64(score.ErrorCount) * 5.0
+		warningPenalty := float64(score.WarningCount) * 2.0
 
-	// 	score.Score = (typedRatio * 100.0) - errorPenalty - warningPenalty
-	// 	if score.Score < 0 {
-	// 		score.Score = 0
-	// 	}
-	// 	if score.Score > 100 {
-	// 		score.Score = 100
-	// 	}
-	// }
+		// Base score on typed ratio, then apply penalties
+		score.Score = (typedRatio * 100.0) - errorPenalty - warningPenalty
+		if score.Score < 0 {
+			score.Score = 0
+		}
+		if score.Score > 100 {
+			score.Score = 100
+		}
+	}
 
-	// // Determine rating
-	// if score.Score >= 90 {
-	// 	score.Rating = "excellent"
-	// 	score.Recommendation = "Code has excellent type safety. Keep it up!"
-	// } else if score.Score >= 75 {
-	// 	score.Rating = "good"
-	// 	score.Recommendation = "Code has good type safety. Consider adding more type annotations."
-	// } else if score.Score >= 50 {
-	// 	score.Rating = "fair"
-	// 	score.Recommendation = "Code has fair type safety. Add type annotations and fix type errors."
-	// } else {
-	// 	score.Rating = "poor"
-	// 	score.Recommendation = "Code has poor type safety. Urgent: add types and fix errors."
-	// }
+	// Determine rating
+	if score.Score >= 90 {
+		score.Rating = "excellent"
+		score.Recommendation = "Code has excellent type safety. Keep it up!"
+	} else if score.Score >= 75 {
+		score.Rating = "good"
+		score.Recommendation = "Code has good type safety. Consider adding more type annotations."
+	} else if score.Score >= 50 {
+		score.Rating = "fair"
+		score.Recommendation = "Code has fair type safety. Add type annotations and fix type errors."
+	} else {
+		score.Rating = "poor"
+		score.Recommendation = "Code has poor type safety. Urgent: add types and fix errors."
+	}
 
-	// return score, nil
-	return nil, fmt.Errorf("not implemented")
+	return score, nil
 }
 
 // Helper methods

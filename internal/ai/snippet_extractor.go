@@ -22,54 +22,54 @@ func NewSnippetExtractor(db *database.Manager) *SnippetExtractor {
 
 // ExtractSmartSnippet extracts a self-contained code snippet
 func (se *SnippetExtractor) ExtractSmartSnippet(symbol *model.Symbol, includeTests bool) (*model.SmartSnippet, error) {
-	// TODO: Implement after DB methods are available
-	// // Get the symbol
-	// if symbol == nil {
-	// 	return nil, fmt.Errorf("symbol cannot be nil")
-	// }
+	if symbol == nil {
+		return nil, fmt.Errorf("symbol cannot be nil")
+	}
 
-	// // Get file
-	// file := symbol.File
+	// Get file
+	file := symbol.File
 
-	// // Extract main code
-	// code, err := se.extractCode(file, symbol.Range.Start.Line, symbol.Range.End.Line)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	// Extract main code
+	code, err := se.extractCode(file, symbol.Range.Start.Line, symbol.Range.End.Line)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract code for symbol %s: %w", symbol.Name, err)
+	}
 
-	// // Get dependencies (imports)
-	// imports, err := se.db.GetImportsByFile(file)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	// Get dependencies (imports)
+	imports, err := se.db.GetImportsByFile(file)
+	if err != nil {
+		// Log error but continue, imports might not be critical for a snippet
+		fmt.Printf("Warning: Failed to get imports for file %s: %v\n", file, err)
+		imports = []*model.Import{}
+	}
 
-	// dependencies := []string{}
-	// for _, imp := range imports {
-	// 	dependencies = append(dependencies, imp.Path)
-	// }
+	dependencies := []string{}
+	for _, imp := range imports {
+		dependencies = append(dependencies, imp.Path)
+	}
 
-	// // Get related code (helper functions, types used by this symbol)
-	// relatedCode, err := se.extractRelatedCode(symbol, file)
-	// if err != nil {
-	// 	relatedCode = []string{} // Non-fatal
-	// }
+	// Get related code (helper functions, types used by this symbol)
+	relatedCode, err := se.extractRelatedCode(symbol, file)
+	if err != nil {
+		fmt.Printf("Warning: Failed to extract related code for symbol %s: %v\n", symbol.Name, err)
+		relatedCode = []string{} // Non-fatal
+	}
 
-	// // Generate usage hints
-	// usageHints := se.generateUsageHints(symbol)
+	// Generate usage hints
+	usageHints := se.generateUsageHints(symbol)
 
-	// // Check if complete (has all dependencies resolved)
-	// complete := se.isComplete(symbol, dependencies)
+	// Check if complete (has all dependencies resolved)
+	complete := se.isComplete(symbol, dependencies)
 
-	// return &model.SmartSnippet{
-	// 	Symbol:        symbol,
-	// 	Code:          code,
-	// 	Dependencies:  dependencies,
-	// 	RelatedCode:   relatedCode,
-	// 	Documentation: symbol.Documentation,
-	// 	UsageHints:    usageHints,
-	// 	Complete:      complete,
-	// }, nil
-	return nil, fmt.Errorf("not implemented")
+	return &model.SmartSnippet{
+		Symbol:        symbol,
+		Code:          code,
+		Dependencies:  dependencies,
+		RelatedCode:   relatedCode,
+		Documentation: symbol.Documentation,
+		UsageHints:    usageHints,
+		Complete:      complete,
+	}, nil
 }
 
 // extractCode extracts code from a file
@@ -99,43 +99,35 @@ func (se *SnippetExtractor) extractCode(filePath string, startLine, endLine int)
 
 // extractRelatedCode extracts related code (helper functions, types)
 func (se *SnippetExtractor) extractRelatedCode(symbol *model.Symbol, file string) ([]string, error) {
-	// TODO: Implement after DB methods are available
-	// relatedCode := []string{}
+	relatedCode := []string{}
 
-	// // Get all symbols in the file
-	// symbols, err := se.db.GetSymbolsByFile(file)
-	// if err != nil {
-	// 	return relatedCode, err
-	// }
+	// Get all symbols in the file
+	symbols, err := se.db.GetSymbolsByFile(file)
+	if err != nil {
+		return relatedCode, fmt.Errorf("failed to get symbols for file %s: %w", file, err)
+	}
 
-	// // Find symbols that this symbol might depend on
-	// // (This is simplified - in production we'd parse the code to find actual dependencies)
-	// for _, sym := range symbols {
-	// 	// Skip the symbol itself
-	// 	if sym.ID == symbol.ID {
-	// 		continue
-	// 	}
+	// Find symbols that this symbol might depend on or relate to
+	for _, sym := range symbols {
+		// Skip the symbol itself
+		if sym.ID == symbol.ID {
+			continue
+		}
 
-	// 	// Include private helpers that might be used
-	// 	isExported := strings.ToUpper(sym.Name[0:1]) == sym.Name[0:1]
-	// 	if !isExported && (sym.Kind == "function" || sym.Kind == "method") { // Check for private function/method
-	// 		code, err := se.extractCode(file, sym.Range.Start.Line, sym.Range.End.Line)
-	// 		if err == nil {
-	// 			relatedCode = append(relatedCode, code)
-	// 		}
-	// 	}
+		// Heuristic: Include symbols that are defined close by or are of a related kind
+		// This is a simplification; a real implementation would analyze usage within the snippet.
+		if (sym.Kind == model.SymbolKindFunction || sym.Kind == model.SymbolKindMethod ||
+			sym.Kind == model.SymbolKindClass || sym.Kind == model.SymbolKindInterface ||
+			sym.Kind == model.SymbolKindStruct || sym.Kind == model.SymbolKindType) &&
+			(sym.Range.Start.Line >= symbol.Range.Start.Line-10 && sym.Range.End.Line <= symbol.Range.End.Line+10) { // Within 10 lines
+			code, err := se.extractCode(file, sym.Range.Start.Line, sym.Range.End.Line)
+			if err == nil && code != "" {
+				relatedCode = append(relatedCode, code)
+			}
+		}
+	}
 
-	// 	// Include types/interfaces this might use
-	// 	if sym.Kind == "type" || sym.Kind == "interface" || sym.Kind == "struct" { // Check for type/interface/struct
-	// 		code, err := se.extractCode(file, sym.Range.Start.Line, sym.Range.End.Line)
-	// 		if err == nil {
-	// 			relatedCode = append(relatedCode, code)
-	// 		}
-	// 	}
-	// }
-
-	// return relatedCode, nil
-	return nil, fmt.Errorf("not implemented")
+	return relatedCode, nil
 }
 
 // generateUsageHints generates hints on how to use the symbol
@@ -205,34 +197,30 @@ func (se *SnippetExtractor) isComplete(symbol *model.Symbol, dependencies []stri
 
 // ExtractMinimalSnippet extracts the absolute minimum code needed
 func (se *SnippetExtractor) ExtractMinimalSnippet(symbol *model.Symbol) (string, error) {
-	// TODO: Implement after DB methods are available
-	// if symbol == nil {
-	// 	return "", fmt.Errorf("symbol cannot be nil")
-	// }
+	if symbol == nil {
+		return "", fmt.Errorf("symbol cannot be nil")
+	}
 
-	// file := symbol.File
+	file := symbol.File
 
-	// return se.extractCode(file, symbol.Range.Start.Line, symbol.Range.End.Line)
-	return "", fmt.Errorf("not implemented")
+	return se.extractCode(file, symbol.Range.Start.Line, symbol.Range.End.Line)
 }
 
 // ExtractWithContext extracts code with surrounding context
 func (se *SnippetExtractor) ExtractWithContext(symbol *model.Symbol, contextLines int) (string, error) {
-	// TODO: Implement after DB methods are available
-	// if symbol == nil {
-	// 	return "", fmt.Errorf("symbol cannot be nil")
-	// }
+	if symbol == nil {
+		return "", fmt.Errorf("symbol cannot be nil")
+	}
 
-	// file := symbol.File
+	file := symbol.File
 
-	// startLine := symbol.Range.Start.Line - contextLines
-	// if startLine < 1 {
-	// 	startLine = 1
-	// }
-	// endLine := symbol.Range.End.Line + contextLines
+	startLine := symbol.Range.Start.Line - contextLines
+	if startLine < 1 {
+		startLine = 1
+	}
+	endLine := symbol.Range.End.Line + contextLines
 
-	// return se.extractCode(file, startLine, endLine)
-	return "", fmt.Errorf("not implemented")
+	return se.extractCode(file, startLine, endLine)
 }
 
 func init() {

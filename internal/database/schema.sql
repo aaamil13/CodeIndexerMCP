@@ -30,16 +30,15 @@ CREATE TABLE IF NOT EXISTS symbols (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
     -- JSON метаданни
-    metadata TEXT,
-    
-    -- Индекси
-    INDEX idx_name (name),
-    INDEX idx_kind (kind),
-    INDEX idx_file (file_path),
-    INDEX idx_status (status),
-    INDEX idx_priority (priority),
-    INDEX idx_content_hash (content_hash)
+    metadata TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_symbol_name ON symbols (name);
+CREATE INDEX IF NOT EXISTS idx_symbol_kind ON symbols (kind);
+CREATE INDEX IF NOT EXISTS idx_symbol_file ON symbols (file_path);
+CREATE INDEX IF NOT EXISTS idx_symbol_status ON symbols (status);
+CREATE INDEX IF NOT EXISTS idx_symbol_priority ON symbols (priority);
+CREATE INDEX IF NOT EXISTS idx_symbol_content_hash ON symbols (content_hash);
 
 -- Таблица за функции/методи
 CREATE TABLE IF NOT EXISTS functions (
@@ -65,9 +64,9 @@ CREATE TABLE IF NOT EXISTS parameters (
     is_optional BOOLEAN DEFAULT 0,
     is_variadic BOOLEAN DEFAULT 0,
     
-    FOREIGN KEY (function_id) REFERENCES functions(symbol_id) ON DELETE CASCADE,
-    INDEX idx_function (function_id)
+    FOREIGN KEY (function_id) REFERENCES functions(symbol_id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_function ON parameters (function_id);
 
 -- Таблица за класове
 CREATE TABLE IF NOT EXISTS classes (
@@ -89,9 +88,9 @@ CREATE TABLE IF NOT EXISTS fields (
     is_static BOOLEAN DEFAULT 0,
     is_constant BOOLEAN DEFAULT 0,
     
-    FOREIGN KEY (class_id) REFERENCES classes(symbol_id) ON DELETE CASCADE,
-    INDEX idx_class (class_id)
+    FOREIGN KEY (class_id) REFERENCES classes(symbol_id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_class ON fields (class_id);
 
 -- Таблица за наследяване
 CREATE TABLE IF NOT EXISTS inheritance (
@@ -100,10 +99,10 @@ CREATE TABLE IF NOT EXISTS inheritance (
     parent_name TEXT NOT NULL,
     kind TEXT, -- 'extends', 'implements'
     
-    FOREIGN KEY (child_id) REFERENCES symbols(id) ON DELETE CASCADE,
-    INDEX idx_child (child_id),
-    INDEX idx_parent (parent_name)
+    FOREIGN KEY (child_id) REFERENCES symbols(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_child ON inheritance (child_id);
+CREATE INDEX IF NOT EXISTS idx_parent ON inheritance (parent_name);
 
 -- Таблица за импорти
 CREATE TABLE IF NOT EXISTS imports (
@@ -112,14 +111,13 @@ CREATE TABLE IF NOT EXISTS imports (
     import_path TEXT NOT NULL,
     alias TEXT,
     is_wildcard BOOLEAN DEFAULT 0,
-    start_line INTEGER,
-    
-    INDEX idx_file (file_path),
-    INDEX idx_path (import_path)
+    start_line INTEGER
 );
+CREATE INDEX IF NOT EXISTS idx_file ON imports (file_path);
+CREATE INDEX IF NOT EXISTS idx_path ON imports (import_path);
 
 -- Таблица за референции между символи
-CREATE TABLE IF NOT EXISTS references (
+CREATE TABLE IF NOT EXISTS code_references (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_symbol_id TEXT NOT NULL,
     target_symbol_name TEXT NOT NULL,
@@ -128,11 +126,11 @@ CREATE TABLE IF NOT EXISTS references (
     line INTEGER NOT NULL,
     column INTEGER NOT NULL,
     
-    FOREIGN KEY (source_symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
-    INDEX idx_source (source_symbol_id),
-    INDEX idx_target (target_symbol_name),
-    INDEX idx_file (file_path)
+    FOREIGN KEY (source_symbol_id) REFERENCES symbols(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_code_reference_source ON code_references (source_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_code_reference_target ON code_references (target_symbol_name);
+CREATE INDEX IF NOT EXISTS idx_code_reference_file ON code_references (file_path);
 
 -- Таблица за build tasks (AI-driven)
 CREATE TABLE IF NOT EXISTS build_tasks (
@@ -145,12 +143,11 @@ CREATE TABLE IF NOT EXISTS build_tasks (
     assigned_agent TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    completed_at DATETIME,
-    
-    INDEX idx_status (status),
-    INDEX idx_priority (priority),
-    INDEX idx_target (target_symbol)
+    completed_at DATETIME
 );
+CREATE INDEX IF NOT EXISTS idx_build_tasks_status ON build_tasks (status);
+CREATE INDEX IF NOT EXISTS idx_build_tasks_priority ON build_tasks (priority);
+CREATE INDEX IF NOT EXISTS idx_build_tasks_target ON build_tasks (target_symbol);
 
 -- Таблица за task dependencies
 CREATE TABLE IF NOT EXISTS task_dependencies (
@@ -159,10 +156,10 @@ CREATE TABLE IF NOT EXISTS task_dependencies (
     depends_on_task_id TEXT NOT NULL,
     
     FOREIGN KEY (task_id) REFERENCES build_tasks(id) ON DELETE CASCADE,
-    FOREIGN KEY (depends_on_task_id) REFERENCES build_tasks(id) ON DELETE CASCADE,
-    INDEX idx_task (task_id),
-    INDEX idx_dependency (depends_on_task_id)
+    FOREIGN KEY (depends_on_task_id) REFERENCES build_tasks(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_task ON task_dependencies (task_id);
+CREATE INDEX IF NOT EXISTS idx_dependency ON task_dependencies (depends_on_task_id);
 
 -- Таблица за test definitions
 CREATE TABLE IF NOT EXISTS test_definitions (
@@ -176,10 +173,10 @@ CREATE TABLE IF NOT EXISTS test_definitions (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (target_symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
-    INDEX idx_target (target_symbol_id),
-    INDEX idx_status (status)
+    FOREIGN KEY (target_symbol_id) REFERENCES symbols(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_test_definitions_target ON test_definitions (target_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_test_definitions_status ON test_definitions (status);
 
 -- Таблица за test assertions
 CREATE TABLE IF NOT EXISTS test_assertions (
@@ -188,9 +185,9 @@ CREATE TABLE IF NOT EXISTS test_assertions (
     assertion_text TEXT NOT NULL,
     position INTEGER,
     
-    FOREIGN KEY (test_id) REFERENCES test_definitions(id) ON DELETE CASCADE,
-    INDEX idx_test (test_id)
+    FOREIGN KEY (test_id) REFERENCES test_definitions(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_test ON test_assertions (test_id);
 
 -- Full-text search за символи
 CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(

@@ -84,6 +84,95 @@ func (m *Manager) SearchSymbols(opts model.SearchOptions) ([]*model.Symbol, erro
 	return symbols, nil
 }
 
+func (m *Manager) GetClassDetails(symbolID string) (*model.Class, error) {
+	query := `
+        SELECT
+            s.id, s.name, s.kind, s.file_path, s.language, s.signature, s.documentation, s.visibility,
+            s.start_line, s.start_column, s.start_byte, s.end_line, s.end_column, s.end_byte,
+            s.content_hash, s.status, s.priority, s.assigned_agent, s.created_at, s.updated_at, s.metadata,
+            c.is_abstract, c.is_interface
+        FROM symbols s
+        JOIN classes c ON s.id = c.symbol_id
+        WHERE s.id = ?
+    `
+	row := m.db.QueryRow(query, symbolID)
+
+	class := &model.Class{}
+	var metadataStr string
+	var createdAtStr, updatedAtStr sql.NullString
+	var assignedAgent sql.NullString
+
+	err := row.Scan(
+		&class.ID, &class.Name, &class.Kind, &class.File, &class.Language, &class.Signature, &class.Documentation, &class.Visibility,
+		&class.Range.Start.Line, &class.Range.Start.Column, &class.Range.Start.Byte, &class.Range.End.Line, &class.Range.End.Column, &class.Range.End.Byte,
+		&class.ContentHash, &class.Status, &class.Priority, &assignedAgent, &createdAtStr, &updatedAtStr, &metadataStr,
+		&class.IsAbstract, &class.IsInterface,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if assignedAgent.Valid {
+		class.AssignedAgent = assignedAgent.String
+	}
+	if createdAtStr.Valid {
+		class.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr.String)
+	}
+	if updatedAtStr.Valid {
+		class.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr.String)
+	}
+	if metadataStr != "" {
+		json.Unmarshal([]byte(metadataStr), &class.Metadata)
+	}
+
+	fields, err := m.GetFields(symbolID)
+	if err != nil {
+		return nil, err
+	}
+	class.Fields = fields
+
+	// TODO: Load BaseClasses from inheritance table
+	// For now, keep it empty or load from symbol metadata if stored there
+
+	return class, nil
+}
+
+func (m *Manager) GetFields(classID string) ([]model.Field, error) {
+	query := `
+        SELECT name, type, default_value, visibility, is_static, is_constant
+        FROM fields
+        WHERE class_id = ?
+    `
+	rows, err := m.db.Query(query, classID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var fields []model.Field
+	for rows.Next() {
+		f := model.Field{}
+		var defaultValue, visibility sql.NullString
+		err := rows.Scan(
+			&f.Name, &f.Type, &defaultValue, &visibility, &f.IsStatic, &f.IsConstant,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if defaultValue.Valid {
+			f.DefaultValue = defaultValue.String
+		}
+		if visibility.Valid {
+			f.Visibility = visibility.String
+		}
+		fields = append(fields, f)
+	}
+	return fields
+}
+
 func (m *Manager) SaveRelationship(rel *model.Relationship) error {
 	return nil
 }
@@ -647,6 +736,90 @@ func (m *Manager) GetSymbolsByStatus(status model.DevelopmentStatus) ([]*model.S
 	}
 
 	return symbols, nil
+}
+
+func (m *Manager) GetFunctionDetails(symbolID string) (*model.Function, error) {
+	query := `
+        SELECT
+            s.id, s.name, s.kind, s.file_path, s.language, s.signature, s.documentation, s.visibility,
+            s.start_line, s.start_column, s.start_byte, s.end_line, s.end_column, s.end_byte,
+            s.content_hash, s.status, s.priority, s.assigned_agent, s.created_at, s.updated_at, s.metadata,
+            f.return_type, f.is_async, f.is_generator, f.body, f.receiver_type, f.is_static
+        FROM symbols s
+        JOIN functions f ON s.id = f.symbol_id
+        WHERE s.id = ?
+    `
+	row := m.db.QueryRow(query, symbolID)
+
+	fn := &model.Function{}
+	var metadataStr string
+	var createdAtStr, updatedAtStr sql.NullString
+	var assignedAgent sql.NullString
+
+	err := row.Scan(
+		&fn.ID, &fn.Name, &fn.Kind, &fn.File, &fn.Language, &fn.Signature, &fn.Documentation, &fn.Visibility,
+		&fn.Range.Start.Line, &fn.Range.Start.Column, &fn.Range.Start.Byte, &fn.Range.End.Line, &fn.Range.End.Column, &fn.Range.End.Byte,
+		&fn.ContentHash, &fn.Status, &fn.Priority, &assignedAgent, &createdAtStr, &updatedAtStr, &metadataStr,
+		&fn.ReturnType, &fn.IsAsync, &fn.IsGenerator, &fn.Body, &fn.ReceiverType, &fn.IsStatic,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if assignedAgent.Valid {
+		fn.AssignedAgent = assignedAgent.String
+	}
+	if createdAtStr.Valid {
+		fn.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr.String)
+	}
+	if updatedAtStr.Valid {
+		fn.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr.String)
+	}
+	if metadataStr != "" {
+		json.Unmarshal([]byte(metadataStr), &fn.Metadata)
+	}
+
+	params, err := m.GetParameters(symbolID)
+	if err != nil {
+		return nil, err
+	}
+	fn.Parameters = params
+
+	return fn, nil
+}
+
+func (m *Manager) GetParameters(functionID string) ([]model.Parameter, error) {
+	query := `
+        SELECT name, type, default_value, position, is_optional, is_variadic
+        FROM parameters
+        WHERE function_id = ?
+        ORDER BY position ASC
+    `
+	rows, err := m.db.Query(query, functionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var params []model.Parameter
+	for rows.Next() {
+		p := model.Parameter{}
+		var defaultValue sql.NullString
+		err := rows.Scan(
+			&p.Name, &p.Type, &defaultValue, &p.Position, &p.IsOptional, &p.IsVariadic,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if defaultValue.Valid {
+			p.DefaultValue = defaultValue.String
+		}
+		params = append(params, p)
+	}
+	return params
 }
 
 func (m *Manager) GetSymbolByName(name string) (*model.Symbol, error) {
