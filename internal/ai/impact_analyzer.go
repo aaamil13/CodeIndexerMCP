@@ -44,8 +44,6 @@ func (ia *ImpactAnalyzer) AnalyzeChangeImpact(symbolName string) (*model.ChangeI
 		}
 	}
 
-	directReferences := len(referencesToThisSymbol)
-
 	// Get affected files
 	affectedFilesMap := make(map[string]bool)
 	for _, ref := range referencesToThisSymbol {
@@ -78,13 +76,13 @@ func (ia *ImpactAnalyzer) AnalyzeChangeImpact(symbolName string) (*model.ChangeI
 	}
 
 	// Determine risk level
-	riskLevel := ia.calculateRiskLevel(directReferences, len(affectedFiles), symbol)
+	riskLevel := ia.calculateRiskLevel(len(referencesToThisSymbol), len(affectedFiles), symbol)
 
 	// Generate suggestions
-	suggestions := ia.generateSuggestions(symbol, directReferences, affectedFiles)
+	suggestions := ia.generateSuggestions(symbol, len(referencesToThisSymbol), affectedFiles)
 
 	// Check if this would be a breaking change
-	breakingChanges := ia.isBreakingChange(symbol, directReferences)
+	breakingChanges := ia.isBreakingChange(symbol, len(referencesToThisSymbol))
 
 	// Calculate indirect references (transitive) - now using DependencyGraphBuilder
 	// This part needs a DependencyGraphBuilder instance
@@ -104,7 +102,7 @@ func (ia *ImpactAnalyzer) AnalyzeChangeImpact(symbolName string) (*model.ChangeI
 
 	return &model.ChangeImpact{
 		Symbol:             symbol,
-		DirectReferences:   directReferences,
+		DirectReferences:   referencesToThisSymbol, // Pass the slice of references
 		IndirectReferences: indirectReferencesCount, // Using the new count
 		AffectedFiles:      affectedFiles,
 		AffectedSymbols:    affectedSymbols,
@@ -241,12 +239,12 @@ func (ia *ImpactAnalyzer) SuggestRefactorings(symbolName string) ([]*model.Refac
 	opportunities := []*model.RefactoringOpportunity{}
 
 	// High usage but low visibility - should be more visible
-	if impact.DirectReferences > 20 && impact.Symbol.Visibility == model.VisibilityPrivate {
+	if len(impact.DirectReferences) > 20 && impact.Symbol.Visibility == model.VisibilityPrivate {
 		opportunities = append(opportunities, &model.RefactoringOpportunity{
 			Type:        "increase_visibility",
 			Symbol:      impact.Symbol,
 			Description: "Consider making this symbol public - it's heavily used",
-			Reason:      fmt.Sprintf("Used %d times but marked as private", impact.DirectReferences),
+			Reason:      fmt.Sprintf("Used %d times but marked as private", len(impact.DirectReferences)),
 			Impact:      "medium",
 			Effort:      "low",
 			Benefits:    []string{"Better API surface", "More discoverable"},
@@ -255,12 +253,12 @@ func (ia *ImpactAnalyzer) SuggestRefactorings(symbolName string) ([]*model.Refac
 	}
 
 	// Very high usage - consider splitting
-	if impact.DirectReferences > 100 {
+	if len(impact.DirectReferences) > 100 {
 		opportunities = append(opportunities, &model.RefactoringOpportunity{
 			Type:        "extract_interface",
 			Symbol:      impact.Symbol,
 			Description: "Consider extracting interface - very high usage",
-			Reason:      fmt.Sprintf("Used %d times - hard to change", impact.DirectReferences),
+			Reason:      fmt.Sprintf("Used %d times - hard to change", len(impact.DirectReferences)),
 			Impact:      "high",
 			Effort:      "high",
 			Benefits:    []string{"Better abstraction", "Easier to test", "More flexible"},

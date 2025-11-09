@@ -170,7 +170,7 @@ func (m *Manager) GetFields(classID string) ([]model.Field, error) {
 		}
 		fields = append(fields, f)
 	}
-	return fields
+	return fields, nil
 }
 
 func (m *Manager) SaveRelationship(rel *model.Relationship) error {
@@ -760,7 +760,7 @@ func (m *Manager) GetFunctionDetails(symbolID string) (*model.Function, error) {
 		&fn.ID, &fn.Name, &fn.Kind, &fn.File, &fn.Language, &fn.Signature, &fn.Documentation, &fn.Visibility,
 		&fn.Range.Start.Line, &fn.Range.Start.Column, &fn.Range.Start.Byte, &fn.Range.End.Line, &fn.Range.End.Column, &fn.Range.End.Byte,
 		&fn.ContentHash, &fn.Status, &fn.Priority, &assignedAgent, &createdAtStr, &updatedAtStr, &metadataStr,
-		&fn.ReturnType, &fn.IsAsync, &fn.IsGenerator, &fn.Body, &fn.ReceiverType, &fn.IsStatic,
+		&fn.ReturnType, &fn.IsAsync, &fn.IsGenerator, &fn.Body,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -819,7 +819,7 @@ func (m *Manager) GetParameters(functionID string) ([]model.Parameter, error) {
 		}
 		params = append(params, p)
 	}
-	return params
+	return params, nil
 }
 
 func (m *Manager) GetSymbolByName(name string) (*model.Symbol, error) {
@@ -1065,4 +1065,31 @@ func (m *Manager) GetMethodsForType(typeSymbolID string) ([]*model.Method, error
 	}
 
 	return methods, nil
+}
+
+func (m *Manager) GetReferencesByFile(filePath string) ([]*model.Reference, error) {
+	query := `
+        SELECT source_symbol_id, target_symbol_name, reference_type, file_path, line, column
+        FROM code_references
+        WHERE file_path = ?
+    `
+	rows, err := m.db.Query(query, filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var references []*model.Reference
+	for rows.Next() {
+		r := &model.Reference{}
+		err := rows.Scan(
+			&r.SourceSymbolID, &r.TargetSymbolName, &r.ReferenceType, &r.FilePath, &r.Line, &r.Column,
+		)
+		if err != nil {
+			return nil, err
+		}
+		references = append(references, r)
+	}
+
+	return references, nil
 }

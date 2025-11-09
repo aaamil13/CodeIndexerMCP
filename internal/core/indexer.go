@@ -329,17 +329,6 @@ func (idx *Indexer) indexFile(filePath string) (*model.FileSymbols, error) {
     return symbols, nil
 }
 
-// IndexFile indexes a single file, making it accessible publicly
-func (idx *Indexer) IndexFile(filePath string) error {
-    fileSymbols, err := idx.indexFile(filePath)
-    if err != nil {
-        return err
-    }
-    if fileSymbols != nil {
-        return idx.dbManager.SaveFileSymbols(fileSymbols)
-    }
-    return nil
-}
 
 // detectLanguage determines the language of a file based on its extension
 func (idx *Indexer) detectLanguage(filePath string) string {

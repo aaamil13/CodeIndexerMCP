@@ -347,8 +347,9 @@ func User() {
 		t.Fatal("Expected ChangeImpact result")
 	}
 
-	if impact.RiskLevel <= 0.0 {
-		t.Error("Expected risk level in impact")
+	// Check if risk level is a valid string
+	if impact.RiskLevel != "low" && impact.RiskLevel != "medium" && impact.RiskLevel != "high" {
+		t.Errorf("Expected valid risk level (low, medium, high), got %s", impact.RiskLevel)
 	}
 }
 

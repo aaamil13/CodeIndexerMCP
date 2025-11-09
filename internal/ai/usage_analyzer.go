@@ -3,6 +3,8 @@ package ai
 import (
 	"fmt"
 	"strings"
+	"strconv" // Added
+	"sort"    // Added
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"

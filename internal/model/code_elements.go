@@ -56,6 +56,8 @@ const (
 	SymbolKindStruct      SymbolKind = "struct"
 	SymbolKindTypeAlias   SymbolKind = "type_alias"
 	SymbolKindDecorator   SymbolKind = "decorator"
+	SymbolKindParameter   SymbolKind = "parameter" // Added
+	SymbolKindType        SymbolKind = "type"      // Added
 	SymbolKindUnknown     SymbolKind = "unknown"
 	SymbolTypeClass       string     = "class"
 )
@@ -127,6 +129,7 @@ type Parameter struct {
     Name         string `json:"name"`
     Type         string `json:"type,omitempty"`
     DefaultValue string `json:"default_value,omitempty"`
+    Position     int    `json:"position"` // Added for database storage/retrieval order
     IsOptional   bool   `json:"is_optional"`
     IsVariadic   bool   `json:"is_variadic"`
 }
@@ -260,6 +263,10 @@ const (
 	RelationshipKindComposes   RelationshipType = "composes"
 )
 
+const (
+	ReferenceTypeCalls string = "calls" // Added
+)
+
 // Relationship represents a relationship between two symbols
 type Relationship struct {
 	Type         RelationshipType `json:"type"`
@@ -371,12 +378,16 @@ type SymbolDetails struct {
 }
 
 type BrokenReference struct {
-	Reference     *Reference
-	File          string
-	Line          int
-	MissingSymbol string
-	Reason        string
-	Severity      string
+	ReferencingFile string `json:"referencing_file"`
+	ReferencingLine int    `json:"referencing_line"`
+	SymbolName      string `json:"symbol_name"`
+	Problem         string `json:"problem"`
+	Reference       *Reference `json:"reference,omitempty"` // Original Reference object, if available
+	File            string `json:"file,omitempty"`
+	Line            int    `json:"line,omitempty"`
+	MissingSymbol   string `json:"missing_symbol,omitempty"`
+	Reason          string `json:"reason,omitempty"`
+	Severity        string `json:"severity,omitempty"`
 }
 
 type RequiredUpdate struct {
@@ -397,15 +408,21 @@ type ValidationError struct {
 }
 
 type AutoFixSuggestion struct {
-	Type        string
-	File        string
-	LineStart   int
-	LineEnd     int
-	OldCode     string
-	NewCode     string
-	Description string
-	Confidence  float64
-	Safe        bool
+	FilePath    string  `json:"file_path"`
+	Line        int     `json:"line"`
+	Column      int     `json:"column"`
+	OldText     string  `json:"old_text"`
+	NewText     string  `json:"new_text"`
+	Message     string  `json:"message"` // Added
+	Type        string  `json:"type,omitempty"`
+	File        string  `json:"file,omitempty"`
+	LineStart   int     `json:"line_start,omitempty"`
+	LineEnd     int     `json:"line_end,omitempty"`
+	OldCode     string  `json:"old_code,omitempty"`
+	NewCode     string  `json:"new_code,omitempty"`
+	Description string  `json:"description,omitempty"`
+	Confidence  float64 `json:"confidence,omitempty"`
+	Safe        bool    `json:"safe,omitempty"`
 }
 
 // ChangeImpact analyzes the impact of changing a symbol
@@ -417,7 +434,12 @@ type ChangeImpact struct {
 	RequiredUpdates    []*RequiredUpdate
 	ValidationErrors   []*ValidationError
 	AutoFixSuggestions []*AutoFixSuggestion
-	RiskLevel          float64
+	Symbol             *Symbol    `json:"symbol,omitempty"` // Added for impact analysis target
+	DirectReferences   []*Reference      `json:"direct_references,omitempty"` // Added for directly related references
+	IndirectReferences int               `json:"indirect_references,omitempty"` // Added
+	RiskLevel          string            `json:"risk_level,omitempty"`          // Changed from float64 to string
+	Suggestions        []string          `json:"suggestions,omitempty"`         // Added
+	BreakingChanges    bool              `json:"breaking_changes,omitempty"`    // Added
 	CanAutoFix         bool
 }
 
@@ -429,12 +451,24 @@ type TestFile struct {
 
 // CodeMetrics calculates code quality metrics
 type CodeMetrics struct {
-	SymbolName      string
-	Cyclomatic      int
-	Maintainability float64
-	Halstead        *HalsteadMetrics
-	Cohesion        float64
-	Coupling        float64
+	SymbolName          string            `json:"symbol_name"`
+	FilePath            string            `json:"file_path"`             // Added
+	FunctionName        string            `json:"function_name"`         // Added
+	LinesOfCode         int               `json:"lines_of_code"`         // Added
+	Cyclomatic          int               `json:"cyclomatic"`
+	CyclomaticComplexity int              `json:"cyclomatic_complexity"` // Added
+	CognitiveComplexity  int               `json:"cognitive_complexity"`  // Added
+	Maintainability     float64
+	MaintainabilityIndex float64          `json:"maintainability_index"` // Added
+	Halstead            *HalsteadMetrics  `json:"halstead,omitempty"`
+	Cohesion            float64           `json:"cohesion"`
+	Coupling            float64           `json:"coupling"`
+	Parameters           int               `json:"parameters"`            // Added (count of parameters)
+	ReturnStatements     int               `json:"return_statements"`     // Added
+	MaxNestingDepth      int               `json:"max_nesting_depth"`     // Added
+	CommentDensity       float64           `json:"comment_density"`       // Added
+	HasDocumentation     bool              `json:"has_documentation,omitempty"` // Added
+	Quality              string            `json:"quality,omitempty"`     // Added
 }
 
 // HalsteadMetrics represents Halstead complexity metrics
@@ -501,6 +535,7 @@ type Change struct {
 	LineEnd      int
 	Symbol       *Symbol
 	OldSymbol    *Symbol
+	NewSymbol    *Symbol // Added for rename/modify changes
 	NewContent   string
 	Relationship string
 }
@@ -533,6 +568,9 @@ type DependencyGraph struct {
 
 // DependencyNode represents a node in a dependency graph
 type DependencyNode struct {
+	SymbolID   string `json:"symbol_id"` // Added
+	Name       string `json:"name"`      // Added
+	Kind       string `json:"kind"`      // Added
 	Symbol *Symbol
 	File   string
 	Type   string
@@ -594,10 +632,13 @@ type MissingMethod struct {
 
 // InvalidCall represents an invalid function call
 type InvalidCall struct {
-	Symbol      *Symbol
+	CallerSymbol *Symbol `json:"caller_symbol,omitempty"` // Added
+	CalledSymbol *Symbol `json:"called_symbol,omitempty"` // Added
 	FilePath    string
 	Line        int
+	Column      int    `json:"column,omitempty"` // Added
 	Description string
+	Message     string `json:"message,omitempty"` // Added
 }
 
 // TypeSafetyScore represents the type safety score for a file
@@ -698,5 +739,3 @@ type CodeContext struct {
 	Documentation  string
 	Context        string
 }
-
-

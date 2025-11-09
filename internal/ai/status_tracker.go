@@ -28,8 +28,9 @@ func (st *StatusTracker) UpdateSymbolStatus(ctx context.Context, symbolID string
 
 // CreateBuildTask creates a new AI-driven build task.
 func (st *StatusTracker) CreateBuildTask(ctx context.Context, task *model.BuildTask) error {
-	task.CreatedAt = time.Now()
-	task.UpdatedAt = time.Now()
+	now := time.Now()
+	task.CreatedAt = now
+	task.UpdatedAt = now
 	return st.dbManager.CreateBuildTask(task)
 }
 
@@ -55,8 +56,9 @@ func (st *StatusTracker) ProcessTask(ctx context.Context, task *model.BuildTask)
 
 	// Mark task as completed (or another appropriate status)
 	task.Status = model.StatusCompleted
-	task.CompletedAt = time.Now()
-	task.UpdatedAt = time.Now()
+	now := time.Now()
+	task.CompletedAt = &now
+	task.UpdatedAt = now // Change back to value, not pointer
 	// In a real system, you'd update the task in the database here.
 	// For this mock, we'll just print its new state.
 	fmt.Printf("Task %s completed.\n", task.ID)

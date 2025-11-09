@@ -230,8 +230,8 @@ func (tv *TypeValidator) ValidateSymbolTypes(symbolID string) (*model.TypeValida
 				// and if the number/types of arguments match. This is highly language-specific.
 				if calledSymbol.Kind != model.SymbolKindFunction && calledSymbol.Kind != model.SymbolKindMethod {
 					invalidCall := &model.InvalidCall{
-						CallerSymbol: symbol.Name,
-						CalledSymbol: calledSymbol.Name,
+						CallerSymbol: symbol,
+						CalledSymbol: calledSymbol,
 						FilePath:     file,
 						Line:         ref.Line,
 						Column:       ref.Column,

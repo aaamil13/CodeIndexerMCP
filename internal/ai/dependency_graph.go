@@ -41,7 +41,7 @@ func (dgb *DependencyGraphBuilder) BuildSymbolDependencyGraph(symbolName string,
 	rootNode := &model.DependencyNode{
 		SymbolID: symbol.ID,
 		Name:     symbol.Name,
-		Kind:     symbol.Kind,
+		Kind:     string(symbol.Kind), // Cast to string
 		File:     file,
 		Type:     "symbol",
 		Level:    0,
@@ -78,7 +78,7 @@ func (dgb *DependencyGraphBuilder) buildGraphRecursive(currentSymbol *model.Symb
 				targetNode := &model.DependencyNode{
 					SymbolID: targetSymbol.ID,
 					Name:     targetSymbol.Name,
-					Kind:     targetSymbol.Kind,
+					Kind:     string(targetSymbol.Kind), // Cast to string
 					File:     targetSymbol.File,
 					Type:     "symbol",
 					Level:    currentDepth + 1,

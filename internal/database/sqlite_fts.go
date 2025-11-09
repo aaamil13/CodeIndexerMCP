@@ -1,5 +1,4 @@
-//go:build cgo,sqlite_full
-// +build cgo,sqlite_full
+//go:build cgo && sqlite_full
 
 package database
 
