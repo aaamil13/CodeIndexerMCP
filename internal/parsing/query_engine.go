@@ -2,6 +2,7 @@ package parsing
 
 import (
     "fmt"
+    "sync" // Added import for sync package
     "github.com/aaamil13/CodeIndexerMCP/internal/parsing/queries"
     sitter "github.com/smacker/go-tree-sitter"
 )
@@ -24,12 +25,14 @@ type QueryResult struct {
 type QueryEngine struct {
     grammarManager *GrammarManager
     queryCache     map[string]*sitter.Query
+    mu             sync.RWMutex // Added RWMutex to protect queryCache
 }
 
 func NewQueryEngine(gm *GrammarManager) *QueryEngine {
     return &QueryEngine{
         grammarManager: gm,
         queryCache:     make(map[string]*sitter.Query),
+        mu:             sync.RWMutex{}, // Initialize the mutex
     }
 }
 
@@ -41,14 +44,19 @@ func (qe *QueryEngine) Execute(parseResult *ParseResult, queryString string) (*Q
     
     // Кеширане на заявките
     cacheKey := fmt.Sprintf("%s:%s", parseResult.Language, queryString)
+
+    qe.mu.RLock() // Acquire read lock
     query, exists := qe.queryCache[cacheKey]
+    qe.mu.RUnlock() // Release read lock
     
     if !exists {
         query, err = sitter.NewQuery([]byte(queryString), grammar)
         if err != nil {
             return nil, fmt.Errorf("invalid query: %w", err)
         }
+        qe.mu.Lock() // Acquire write lock
         qe.queryCache[cacheKey] = query
+        qe.mu.Unlock() // Release write lock
     }
     
     cursor := sitter.NewQueryCursor()

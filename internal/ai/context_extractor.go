@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
@@ -32,22 +33,25 @@ func (ce *ContextExtractor) ExtractContext(symbolName string, depth int) (*model
 	}
 
 	// Get file information
-	file := symbol.File
+	file, err := ce.db.GetFileByID(symbol.FileID)
+	if err != nil || file == nil {
+		return nil, fmt.Errorf("file not found for symbol %s: %w", symbolName, err)
+	}
 
 	// Extract the actual code
-	code, err := ce.extractCode(file, symbol.Range.Start.Line, symbol.Range.End.Line)
+	code, err := ce.extractCode(file.Path, symbol.Range.Start.Line, symbol.Range.End.Line)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract code for symbol %s: %w", symbolName, err)
 	}
 
 	// Get surrounding context (lines before and after)
-	context, err := ce.extractContext(file, symbol.Range.Start.Line, symbol.Range.End.Line, 5)
+	context, err := ce.extractContext(file.Path, symbol.Range.Start.Line, symbol.Range.End.Line, 5)
 	if err != nil {
 		context = "" // Non-fatal, just means less context
 	}
 
 	// Get dependencies (imports for this file)
-	imports, err := ce.db.GetImportsByFile(file)
+	imports, err := ce.db.GetImportsByFile(file.ID)
 	if err != nil {
 		imports = []*model.Import{} // Non-fatal
 	}
@@ -58,7 +62,7 @@ func (ce *ContextExtractor) ExtractContext(symbolName string, depth int) (*model
 	}
 
 	// Get related symbols in the same file
-	relatedSymbols, err := ce.db.GetSymbolsByFile(file)
+	relatedSymbols, err := ce.db.GetSymbolsByFile(file.ID)
 	if err != nil {
 		relatedSymbols = []*model.Symbol{} // Non-fatal
 	}
@@ -97,7 +101,7 @@ func (ce *ContextExtractor) ExtractContext(symbolName string, depth int) (*model
 
 	return &model.CodeContext{
 		Symbol:         symbol,
-		File:           file,
+		File:           file.Path, // Use file.Path
 		Code:           code,
 		Dependencies:   dependencies,
 		RelatedSymbols: relatedSymbols,
@@ -165,7 +169,6 @@ func (ce *ContextExtractor) extractContext(filePath string, startLine, endLine, 
 			break
 		}
 	}
-
 	return strings.Join(lines, "\n"), scanner.Err()
 }
 
@@ -174,7 +177,7 @@ func (ce *ContextExtractor) extractUsageExamples(symbol *model.Symbol, maxExampl
 	// Get references to this symbol
 	references, err := ce.db.GetReferencesBySymbol(symbol.ID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get references for symbol %s: %w", symbol.ID, err)
+		return nil, fmt.Errorf("failed to get references for symbol %d: %w", symbol.ID, err)
 	}
 
 	if len(references) == 0 {
@@ -214,5 +217,9 @@ func (ce *ContextExtractor) extractUsageExamples(symbol *model.Symbol, maxExampl
 
 // getSymbolByID is a helper to get symbol by ID
 func (ce *ContextExtractor) getSymbolByID(symbolID string) (*model.Symbol, error) {
-	return ce.db.GetSymbol(symbolID)
+	symID, err := strconv.Atoi(symbolID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid symbol ID: %w", err)
+	}
+	return ce.db.GetSymbolByID(symID)
 }

@@ -2,6 +2,7 @@ package ai
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
@@ -27,7 +28,11 @@ func (dgb *DependencyGraphBuilder) BuildSymbolDependencyGraph(symbolName string,
 		return nil, fmt.Errorf("symbol not found: %s", symbolName)
 	}
 
-	file := symbol.File
+	// Retrieve the file associated with the symbol
+	file, err := dgb.db.GetFileByID(symbol.FileID)
+	if err != nil || file == nil {
+		return nil, fmt.Errorf("file not found for symbol %d: %w", symbol.ID, err)
+	}
 
 	graph := &model.DependencyGraph{
 		Nodes: []*model.DependencyNode{},
@@ -39,15 +44,15 @@ func (dgb *DependencyGraphBuilder) BuildSymbolDependencyGraph(symbolName string,
 
 	// Add root node
 	rootNode := &model.DependencyNode{
-		SymbolID: symbol.ID,
+		SymbolID: strconv.Itoa(symbol.ID), // Convert int to string
 		Name:     symbol.Name,
 		Kind:     string(symbol.Kind), // Cast to string
-		File:     file,
+		File:     file.Path,
 		Type:     "symbol",
 		Level:    0,
 	}
 	graph.Nodes = append(graph.Nodes, rootNode)
-	visitedNodes[symbol.ID] = true
+	visitedNodes[strconv.Itoa(symbol.ID)] = true
 
 	dgb.buildGraphRecursive(symbol, graph, visitedNodes, visitedEdges, 0, maxDepth)
 
@@ -74,26 +79,33 @@ func (dgb *DependencyGraphBuilder) buildGraphRecursive(currentSymbol *model.Symb
 			}
 
 			// Add target node if not visited
-			if !visitedNodes[targetSymbol.ID] {
+			if !visitedNodes[strconv.Itoa(targetSymbol.ID)] {
+				// Retrieve the file associated with the target symbol
+				targetFile, err := dgb.db.GetFileByID(targetSymbol.FileID)
+				if err != nil || targetFile == nil {
+					fmt.Printf("Error: File not found for target symbol %d: %v\n", targetSymbol.ID, err)
+					continue
+				}
+
 				targetNode := &model.DependencyNode{
-					SymbolID: targetSymbol.ID,
+					SymbolID: strconv.Itoa(targetSymbol.ID), // Convert int to string
 					Name:     targetSymbol.Name,
 					Kind:     string(targetSymbol.Kind), // Cast to string
-					File:     targetSymbol.File,
+					File:     targetFile.Path,
 					Type:     "symbol",
 					Level:    currentDepth + 1,
 				}
 				graph.Nodes = append(graph.Nodes, targetNode)
-				visitedNodes[targetSymbol.ID] = true
+				visitedNodes[strconv.Itoa(targetSymbol.ID)] = true
 			}
 
 			// Add edge
-			edgeKey := fmt.Sprintf("%s-%s-%s", currentSymbol.ID, targetSymbol.ID, ref.ReferenceType)
+			edgeKey := fmt.Sprintf("%s-%s-%s", strconv.Itoa(currentSymbol.ID), strconv.Itoa(targetSymbol.ID), ref.ReferenceType)
 			if !visitedEdges[edgeKey] {
 				edge := &model.DependencyEdge{
-					From:   currentSymbol.ID,
-					To:     targetSymbol.ID,
-					Type:   ref.ReferenceType,
+					From:   strconv.Itoa(currentSymbol.ID),
+					To:     strconv.Itoa(targetSymbol.ID),
+					Type:   string(ref.ReferenceType), // Convert to string
 					Weight: 1, // Default weight
 				}
 				graph.Edges = append(graph.Edges, edge)
@@ -143,11 +155,11 @@ func (dgb *DependencyGraphBuilder) GetDependenciesFor(symbolName string) ([]*mod
 
 // collectDependencies collects dependencies recursively
 func (dgb *DependencyGraphBuilder) collectDependencies(currentSymbol *model.Symbol, deps *[]*model.Symbol, visited map[string]bool, depth, maxDepth int) {
-	if depth >= maxDepth || visited[currentSymbol.ID] {
+	if depth >= maxDepth || visited[strconv.Itoa(currentSymbol.ID)] {
 		return
 	}
 
-	visited[currentSymbol.ID] = true
+	visited[strconv.Itoa(currentSymbol.ID)] = true
 	*deps = append(*deps, currentSymbol)
 
 	// Get outgoing references (what currentSymbol uses)
@@ -194,15 +206,22 @@ func (dgb *DependencyGraphBuilder) GetDependentsFor(symbolName string) ([]*model
 
 	for _, ref := range references {
 		// If our symbol is the target, then ref.SourceSymbolID is a dependent
-		if ref.TargetSymbolName == symbolName { // Assuming TargetSymbolName stores the actual name, not ID
-			dependentSymbol, err := dgb.db.GetSymbol(ref.SourceSymbolID)
-			if err != nil || dependentSymbol == nil {
-				continue // Skip if source symbol cannot be found
-			}
-			if !visited[dependentSymbol.ID] {
-				dependents = append(dependents, dependentSymbol)
-				visited[dependentSymbol.ID] = true
-			}
+		// Note: The previous logic assumed TargetSymbolName stores the actual name, not ID.
+		// If TargetSymbolName is expected to be the ID, this comparison needs to be updated.
+		// For now, let's assume it's the name and that GetSymbolByName is robust enough.
+		targetSym, err := dgb.db.GetSymbolByName(ref.TargetSymbolName) // Need a way to ensure this is the *correct* target symbol
+		if err != nil || targetSym == nil || targetSym.ID != symbol.ID {
+			// This reference is not for our symbol, or the target symbol couldn't be resolved.
+			continue
+		}
+
+		dependentSymbol, err := dgb.db.GetSymbolByID(ref.SourceSymbolID)
+		if err != nil || dependentSymbol == nil {
+			continue // Skip if source symbol cannot be found
+		}
+		if !visited[strconv.Itoa(dependentSymbol.ID)] { // Convert int to string for map key
+			dependents = append(dependents, dependentSymbol)
+			visited[strconv.Itoa(dependentSymbol.ID)] = true
 		}
 	}
 

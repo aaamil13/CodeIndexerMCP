@@ -27,11 +27,10 @@ func (mc *MetricsCalculator) CalculateMetrics(symbol *model.Symbol) (*model.Code
 		return nil, fmt.Errorf("symbol cannot be nil")
 	}
 
-	// Get file
-	file := symbol.File
+	filePath := symbol.FilePath // Declare filePath here
 
 	// Extract code
-	code, err := mc.extractCode(file, symbol.Range.Start.Line, symbol.Range.End.Line)
+	code, err := mc.extractCode(filePath, symbol.LineNumber, symbol.EndLineNumber)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract code for symbol %s: %w", symbol.Name, err)
 	}
@@ -70,7 +69,7 @@ func (mc *MetricsCalculator) CalculateMetrics(symbol *model.Symbol) (*model.Code
 	quality := mc.determineQuality(cyclomaticComplexity, cognitiveComplexity, maintainability, hasDocumentation)
 
 	return &model.CodeMetrics{
-		FilePath:             file,
+		FilePath:             filePath,
 		FunctionName:         symbol.Name,
 		LinesOfCode:          loc,
 		CyclomaticComplexity: cyclomaticComplexity,
@@ -308,11 +307,11 @@ func (mc *MetricsCalculator) extractCode(filePath string, startLine, endLine int
 }
 
 // CalculateFileMetrics calculates metrics for an entire file
-func (mc *MetricsCalculator) CalculateFileMetrics(filePath string) ([]*model.CodeMetrics, error) {
+func (mc *MetricsCalculator) CalculateFileMetrics(fileID int) ([]*model.CodeMetrics, error) {
 	// Get all symbols in file
-	symbols, err := mc.db.GetSymbolsByFile(filePath)
+	symbols, err := mc.db.GetSymbolsByFile(fileID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get symbols for file %s: %w", filePath, err)
+		return nil, fmt.Errorf("failed to get symbols for file ID %d: %w", fileID, err)
 	}
 
 	metrics := []*model.CodeMetrics{}
@@ -322,7 +321,12 @@ func (mc *MetricsCalculator) CalculateFileMetrics(filePath string) ([]*model.Cod
 			metric, err := mc.CalculateMetrics(symbol)
 			if err != nil {
 				// Log error but continue with other symbols
-				fmt.Printf("Warning: Failed to calculate metrics for symbol %s in file %s: %v\n", symbol.Name, filePath, err)
+				file, err := mc.db.GetFileByID(symbol.FileID)
+				fileName := "unknown"
+				if err == nil && file != nil {
+					fileName = file.Path
+				}
+				fmt.Printf("Warning: Failed to calculate metrics for symbol %s in file %s: %v\n", symbol.Name, fileName, err)
 				continue
 			}
 			metrics = append(metrics, metric)

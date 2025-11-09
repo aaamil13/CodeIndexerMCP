@@ -333,7 +333,7 @@ func (s *Server) handleDefinition(msg *Message) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	file, err := s.db.GetFileByPath(int(projectID), symbol.File)
+	file, err := s.db.GetFileByPath(int(projectID), symbol.FilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -459,12 +459,12 @@ func (s *Server) handleWorkspaceSymbol(msg *Message) (interface{}, error) {
 	for _, symbol := range symbols {
 		// For workspace symbols, we don't have a specific file URI from params.TextDocument.URI
 		// We need to get the file path from the symbol itself.
-		// The symbol.File field contains the absolute path.
+		// The symbol.FilePath field contains the absolute path.
 		symbolInfo = append(symbolInfo, SymbolInformation{
 			Name: symbol.Name,
 			Kind: symbolTypeToSymbolKind(symbol.Kind),
 			Location: Location{
-				URI: "file://" + symbol.File,
+				URI: "file://" + symbol.FilePath,
 				Range: Range{
 					Start: Position{Line: symbol.Range.Start.Line - 1, Character: symbol.Range.Start.Column},
 					End:   Position{Line: symbol.Range.End.Line - 1, Character: symbol.Range.End.Column},
@@ -515,7 +515,7 @@ func (s *Server) handleRename(msg *Message) (interface{}, error) {
 
 	// Add edit for definition
 	projectID, _ := s.getProjectIDFromURI(params.TextDocument.URI) // Assuming 'params.TextDocument.URI' is available
-	file, _ := s.db.GetFileByPath(int(projectID), symbol.File)
+	file, _ := s.db.GetFileByPath(int(projectID), symbol.FilePath)
 	if file != nil {
 		uri := "file://" + file.Path
 		changes[uri] = append(changes[uri], TextEdit{

@@ -1,6 +1,8 @@
 package model
 
-import "time"
+import (
+	"time"
+)
 
 // Position представя позиция в кода
 type Position struct {
@@ -86,11 +88,17 @@ const (
 
 // Symbol представя универсален символ
 type Symbol struct {
-    ID            string            `json:"id"`
+    ID            int               `json:"id"` // Changed to int
+    FileID        int               `json:"file_id"` // Added FileID
     Name          string            `json:"name"`
     Kind          SymbolKind        `json:"kind"` // "function", "class", "method", etc.
-    File          string            `json:"file"`
+    FilePath      string            `json:"file_path"` // Renamed from File to FilePath
     Range         Range             `json:"range"`
+    LineNumber    int               `json:"line_number"`    // Added for database mapping
+    ColumnNumber  int               `json:"column_number"`  // Added for database mapping
+    EndLineNumber int               `json:"end_line_number"`// Added for database mapping
+    EndColumnNumber int             `json:"end_column_number"`// Added for database mapping
+    Parent        string            `json:"parent"` // Added Parent
     Signature     string            `json:"signature"`
     Documentation string            `json:"documentation"`
     Visibility    Visibility        `json:"visibility"` // "public", "private", "protected"
@@ -225,31 +233,52 @@ type ParseResult struct {
 	Imports  []*Import
 }
 
+// FileSymbols represents the symbols extracted from a file
+type FileSymbols struct { // New struct for FileSymbols
+	ID          int       `json:"id"`
+	FileID      int       `json:"file_id"`
+	SymbolsJSON []byte    `json:"symbols_json"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 // Имплементации на интерфейса
 func (s *Symbol) GetName() string   { return s.Name }
 func (s *Symbol) GetKind() string   { return string(s.Kind) }
 func (s *Symbol) GetRange() Range   { return s.Range }
-func (s *Symbol) GetFile() string   { return s.File }
+func (s *Symbol) GetFile() string   { return s.FilePath } // Changed to FilePath
 
 func (f *Function) GetName() string { return f.Symbol.Name }
 func (f *Function) GetKind() string { return "function" }
 func (f *Function) GetRange() Range { return f.Symbol.Range }
-func (f *Function) GetFile() string { return f.Symbol.File }
+func (f *Function) GetFile() string { return f.Symbol.FilePath } // Changed to FilePath
 
 func (c *Class) GetName() string { return c.Symbol.Name }
 func (c *Class) GetKind() string { return "class" }
 func (c *Class) GetRange() Range { return c.Symbol.Range }
-func (c *Class) GetFile() string { return c.Symbol.File }
+func (c *Class) GetFile() string { return c.Symbol.FilePath } // Changed to FilePath
 
 // Reference represents a reference between symbols
 type Reference struct {
-	SourceSymbolID   string `json:"source_symbol_id"`
-	TargetSymbolName string `json:"target_symbol_name"`
-	ReferenceType    string `json:"reference_type"`
-	FilePath         string `json:"file_path"`
-	Line             int    `json:"line"`
-	Column           int    `json:"column"`
+	ID               int        `json:"id"` // Added ID
+	SourceSymbolID   int        `json:"source_symbol_id"`
+	TargetSymbolName string     `json:"target_symbol_name"`
+	ReferenceType    ReferenceType `json:"reference_type"` // Changed to ReferenceType
+	FilePath         string     `json:"file_path"`
+	Line             int        `json:"line"`
+	Column           int        `json:"column"`
+	CreatedAt        time.Time  `json:"created_at"` // Added CreatedAt
+	UpdatedAt        time.Time  `json:"updated_at"` // Added UpdatedAt
 }
+
+// ReferenceType defines the type of reference (e.g., "call", "usage", "import")
+type ReferenceType string
+
+const (
+	ReferenceTypeCall  ReferenceType = "call"
+	ReferenceTypeUsage ReferenceType = "usage"
+	ReferenceTypeImport ReferenceType = "import"
+)
 
 // RelationshipType defines the type of relationship
 type RelationshipType string
@@ -262,14 +291,10 @@ const (
 	RelationshipKindComposes   RelationshipType = "composes"
 )
 
-const (
-	ReferenceTypeCalls string = "calls" // Added
-)
-
 // Relationship represents a relationship between two symbols
 type Relationship struct {
 	Type         RelationshipType `json:"type"`
-	SourceSymbol string           `json:"source_symbol"` // Name or ID of the source symbol
+	SourceSymbol int              `json:"source_symbol"` // Changed to int
 	TargetSymbol string           `json:"target_symbol"` // Name or ID of the target symbol
 	FilePath     string           `json:"file_path"`     // File where the relationship was found
 	Line         int              `json:"line"`          // Line number where the relationship was found
@@ -660,6 +685,7 @@ type Project struct {
 	LanguageStats map[string]int
 	LastIndexed   time.Time
 	CreatedAt     time.Time
+	UpdatedAt     time.Time // Added UpdatedAt
 }
 
 // File represents a file in the project
@@ -674,6 +700,8 @@ type File struct {
 	Hash         string
 	LastModified time.Time
 	LastIndexed  time.Time
+	CreatedAt    time.Time // Added CreatedAt
+	UpdatedAt    time.Time // Added UpdatedAt
 }
 
 type UsageExample struct {

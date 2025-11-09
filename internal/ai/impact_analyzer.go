@@ -2,6 +2,7 @@ package ai
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/database"
@@ -34,7 +35,7 @@ func (ia *ImpactAnalyzer) AnalyzeChangeImpact(symbolName string) (*model.ChangeI
 	// We need to filter for where this symbol is the TARGET.
 	allReferences, err := ia.db.GetReferencesBySymbol(symbol.ID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get references for symbol %s: %w", symbol.ID, err)
+		return nil, fmt.Errorf("failed to get references for symbol %d: %w", symbol.ID, err)
 	}
 
 	referencesToThisSymbol := []*model.Reference{}
@@ -61,16 +62,16 @@ func (ia *ImpactAnalyzer) AnalyzeChangeImpact(symbolName string) (*model.ChangeI
 	for _, ref := range referencesToThisSymbol {
 		// Get the symbol that contains this reference
 		// A more robust way would be to query for the symbol ID of ref.SourceSymbolID
-		if !affectedSymbolIDs[ref.SourceSymbolID] {
-			sourceSymbol, err := ia.db.GetSymbol(ref.SourceSymbolID)
+		if _, ok := affectedSymbolIDs[strconv.Itoa(ref.SourceSymbolID)]; !ok { // Check if key exists
+			sourceSymbol, err := ia.db.GetSymbolByID(ref.SourceSymbolID) // Changed to GetSymbolByID
 			if err != nil {
 				// Log error but continue
-				fmt.Printf("Warning: Failed to get source symbol %s for reference: %v\n", ref.SourceSymbolID, err)
+				fmt.Printf("Warning: Failed to get source symbol %d for reference: %v\n", ref.SourceSymbolID, err)
 				continue
 			}
 			if sourceSymbol != nil {
 				affectedSymbols = append(affectedSymbols, sourceSymbol)
-				affectedSymbolIDs[sourceSymbol.ID] = true
+				affectedSymbolIDs[strconv.Itoa(sourceSymbol.ID)] = true // Convert int to string
 			}
 		}
 	}
@@ -93,7 +94,7 @@ func (ia *ImpactAnalyzer) AnalyzeChangeImpact(symbolName string) (*model.ChangeI
 		// Count all unique nodes in the graph beyond the direct dependents
 		// A more precise calculation would be needed here. For simplicity, count nodes at level > 0
 		for _, node := range graph.Nodes {
-			if node.Level > 0 && node.SymbolID != symbol.ID {
+			if node.Level > 0 && node.SymbolID != strconv.Itoa(symbol.ID) { // Convert int to string
 				indirectReferencesCount++
 			}
 		}

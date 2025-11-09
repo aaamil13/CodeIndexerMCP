@@ -90,7 +90,11 @@ func (sa *SemanticAnalyzer) AnalyzeProject(projectID string) (*model.SemanticAna
 
 // InferType infers the type of a symbol
 func (sa *SemanticAnalyzer) InferType(symbolID string) (*model.TypeInference, error) {
-	symbol, err := sa.db.GetSymbol(symbolID)
+	symID, err := strconv.Atoi(symbolID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid symbol ID: %w", err)
+	}
+	symbol, err := sa.db.GetSymbolByID(symID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get symbol %s: %w", symbolID, err)
 	}
@@ -106,18 +110,9 @@ func (sa *SemanticAnalyzer) InferType(symbolID string) (*model.TypeInference, er
 	// Type inference based on symbol type
 	switch symbol.Kind {
 	case model.SymbolKindFunction, model.SymbolKindMethod:
-		// Need to fetch full function details for return type
-		fn, err := sa.db.GetFunctionDetails(symbolID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get function details for symbol %s: %w", symbolID, err)
-		}
-		if fn != nil && fn.ReturnType != "" {
-			inference.InferredType = fn.ReturnType
-		} else {
-			inference.InferredType = sa.inferFunctionType(symbol)
-		}
+		inference.InferredType = sa.inferFunctionType(symbol)
 		inference.Confidence = 0.8
-		inference.Reasoning = "Inferred from function signature and/or database"
+		inference.Reasoning = "Inferred from function signature"
 
 	// For other kinds, infer from signature or name.
 	// For variables, more advanced analysis (e.g., from assignment or usage) would be needed.
@@ -197,14 +192,12 @@ func (sa *SemanticAnalyzer) inferVariableType(symbol *model.Symbol) string {
 
 // ResolveCrossFileReference resolves a reference across files
 func (sa *SemanticAnalyzer) ResolveCrossFileReference(symbolName string, projectID string) ([]*model.Symbol, error) {
-	// Search for symbol across all files in project
-	searchOptions := model.SearchOptions{
-		Query: symbolName,
-		// Assuming SearchSymbols can filter by projectID internally or that symbols are unique enough
-		// For now, projectID is not directly used in SearchSymbols signature from manager.go
-		// We would need to add projectID to SearchOptions and modify SearchSymbols in database/manager.go
+	projID, err := strconv.Atoi(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid project ID: %w", err)
 	}
-	symbols, err := sa.db.SearchSymbols(searchOptions)
+
+	symbols, err := sa.db.SearchSymbols(symbolName, projID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search symbols for %s: %w", symbolName, err)
 	}
@@ -242,7 +235,7 @@ func (sa *SemanticAnalyzer) analyzeCrossDependencies(projectID string, result *m
 	dependencyMap := make(map[string][]string) // file_path -> []dependent_file_paths
 
 	for _, file := range files {
-		imports, err := sa.db.GetImportsByFile(file.Path)
+		imports, err := sa.db.GetImportsByFile(file.ID)
 		if err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("Failed to get imports for file %s: %v", file.Path, err))
 			continue
@@ -310,7 +303,7 @@ func (sa *SemanticAnalyzer) findUnusedSymbols(projectID string) ([]*model.Symbol
 	}
 
 	for _, file := range files {
-		symbols, err := sa.db.GetSymbolsByFile(file.Path)
+		symbols, err := sa.db.GetSymbolsByFile(file.ID)
 		if err != nil {
 			fmt.Printf("Warning: Failed to get symbols for file %s: %v\n", file.Path, err)
 			continue
@@ -366,7 +359,7 @@ func (sa *SemanticAnalyzer) detectCircularDependencies(projectID string) []*mode
 	// Build adjacency list (filePath -> []dependentFilePaths)
 	graph := make(map[string][]string)
 	for _, file := range files {
-		imports, err := sa.db.GetImportsByFile(file.Path)
+		imports, err := sa.db.GetImportsByFile(file.ID)
 		if err != nil {
 			fmt.Printf("Warning: Failed to get imports for file %s for circular dependency detection: %v\n", file.Path, err)
 			continue
@@ -478,7 +471,7 @@ func (sa *SemanticAnalyzer) AnalyzeCallGraph(projectID string) (*model.CallGraph
 	symbolToNode := make(map[string]*model.CallGraphNode)
 
 	for _, file := range files {
-		symbols, err := sa.db.GetSymbolsByFile(file.Path)
+		symbols, err := sa.db.GetSymbolsByFile(file.ID)
 		if err != nil {
 			fmt.Printf("Warning: Failed to get symbols for file %s for call graph: %v\n", file.Path, err)
 			continue
@@ -487,20 +480,20 @@ func (sa *SemanticAnalyzer) AnalyzeCallGraph(projectID string) (*model.CallGraph
 		for _, symbol := range symbols {
 			if symbol.Kind == model.SymbolKindFunction || symbol.Kind == model.SymbolKindMethod {
 				node := &model.CallGraphNode{
-					SymbolID:   symbol.ID,
+					SymbolID:   strconv.Itoa(symbol.ID),
 					SymbolName: symbol.Name,
 					FilePath:   file.Path,
 					CallCount:  0,
 				}
 				callGraph.Nodes = append(callGraph.Nodes, node)
-				symbolToNode[symbol.ID] = node
+				symbolToNode[strconv.Itoa(symbol.ID)] = node
 			}
 		}
 	}
 
 	// Build edges (function calls)
 	for _, file := range files {
-		symbols, err := sa.db.GetSymbolsByFile(file.Path)
+		symbols, err := sa.db.GetSymbolsByFile(file.ID) // Pass file.ID
 		if err != nil {
 			continue
 		}
@@ -508,21 +501,21 @@ func (sa *SemanticAnalyzer) AnalyzeCallGraph(projectID string) (*model.CallGraph
 		for _, symbol := range symbols {
 			references, err := sa.db.GetReferencesBySymbol(symbol.ID)
 			if err != nil {
-				fmt.Printf("Warning: Failed to get references for symbol %s for call graph: %v\n", symbol.ID, err)
+				fmt.Printf("Warning: Failed to get references for symbol %d for call graph: %v\n", symbol.ID, err)
 				continue
 			}
 
 			for _, ref := range references {
-				if ref.ReferenceType == model.ReferenceTypeCalls { // Assuming ReferenceTypeCalls is defined
+				if ref.ReferenceType == model.ReferenceTypeCall { // Changed to model.ReferenceTypeCall
 					edge := &model.CallGraphEdge{
-						FromSymbolID: symbol.ID,
-						ToSymbolID:   ref.TargetSymbolName, // TargetSymbolName might be ID or name, depending on how GetReferencesBySymbol works
-						CallSites:    1,                    // Simplified
+						FromSymbolID: strconv.Itoa(symbol.ID), // Convert int to string
+						ToSymbolID:   ref.TargetSymbolName,
+						CallSites:    1,
 					}
 					callGraph.Edges = append(callGraph.Edges, edge)
 
 					// Update call count
-					if node, ok := symbolToNode[ref.TargetSymbolName]; ok { // Use TargetSymbolName to find node
+					if node, ok := symbolToNode[ref.TargetSymbolName]; ok {
 						node.CallCount++
 					}
 				}
