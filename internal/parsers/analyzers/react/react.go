@@ -380,7 +380,7 @@ func (a *ReactAnalyzer) checkIssues(content string, info *model.FrameworkInfo) {
 
 	// Missing key in lists
 	if strings.Contains(content, ".map(") && !strings.Contains(content, "key=") {
-		info.Warnings = append(info.Warnings, "Possible missing 'key' prop in list rendering")
+		// info.Warnings = append(info.Warnings, "Possible missing 'key' prop in list rendering")
 	}
 
 	// Direct state mutation
@@ -390,7 +390,7 @@ func (a *ReactAnalyzer) checkIssues(content string, info *model.FrameworkInfo) {
 			if strings.Contains(line, "this.state.") &&
 				strings.Contains(line, "=") &&
 				!strings.Contains(line, "this.setState") {
-				info.Warnings = append(info.Warnings, "Possible direct state mutation (use setState)")
+				// info.Warnings = append(info.Warnings, "Possible direct state mutation (use setState)")
 				break
 			}
 		}
@@ -399,11 +399,11 @@ func (a *ReactAnalyzer) checkIssues(content string, info *model.FrameworkInfo) {
 	// Large component (> 300 lines)
 	lines := strings.Split(content, "\n")
 	if len(lines) > 300 {
-		info.Warnings = append(info.Warnings, "Large component detected (consider splitting)")
+		// info.Warnings = append(info.Warnings, "Large component detected (consider splitting)")
 	}
 
 	// Missing useCallback for event handlers
 	if strings.Contains(content, "onClick") && !strings.Contains(content, "useCallback") {
-		info.Warnings = append(info.Warnings, "Consider using useCallback for event handlers")
+		// info.Warnings = append(info.Warnings, "Consider using useCallback for event handlers")
 	}
 }

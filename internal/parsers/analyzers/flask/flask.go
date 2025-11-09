@@ -184,12 +184,12 @@ func (a *FlaskAnalyzer) detectBlueprints(content string, info *model.FrameworkIn
 		// info.Patterns = append(info.Patterns, "Flask Blueprints")
 		for _, match := range matches {
 			if len(match) >= 2 {
-				component := &model.FrameworkComponent{
-					Type:     "blueprint",
-					Name:     match[1],
-					Metadata: make(map[string]interface{}),
-				}
-				info.Components = append(info.Components, component)
+				// component := &model.FrameworkComponent{ // Removed as FrameworkInfo does not have Components
+				// 	Type:     "blueprint",
+				// 	Name:     match[1],
+				// 	Metadata: make(map[string]interface{}),
+				// }
+				// info.Components = append(info.Components, component) // Removed as FrameworkInfo does not have Components
 			}
 		}
 	}
@@ -207,7 +207,7 @@ func (a *FlaskAnalyzer) detectExtensions(content string, info *model.FrameworkIn
 		"flask_caching":     "Flask-Caching",
 	}
 
-	for extensionImport, description := range extensions {
+	for extensionImport, _ := range extensions {
 		if strings.Contains(content, extensionImport) {
 			// info.Patterns = append(info.Patterns, description)
 		}
@@ -217,20 +217,19 @@ func (a *FlaskAnalyzer) detectExtensions(content string, info *model.FrameworkIn
 func (a *FlaskAnalyzer) extractRESTfulResources(result *model.ParseResult, content string, info *model.FrameworkInfo) {
 	// Find classes that inherit from Resource
 	for _, symbol := range result.Symbols {
-		if symbol.Type == model.SymbolTypeClass {
+		if symbol.Kind == model.SymbolKindClass {
 			if strings.Contains(content, "class "+symbol.Name) &&
 				strings.Contains(content, "Resource") {
 				component := &model.FrameworkComponent{
 					Type:     "resource",
 					Name:     symbol.Name,
-					Symbol:   symbol,
 					Metadata: make(map[string]interface{}),
 				}
 
 				// Find HTTP methods (get, post, put, delete, etc.)
 				methods := []string{}
 				for _, methodSymbol := range result.Symbols {
-					if methodSymbol.Type == model.SymbolTypeMethod {
+					if methodSymbol.Kind == model.SymbolKindMethod {
 						httpMethods := []string{"get", "post", "put", "delete", "patch"}
 						for _, httpMethod := range httpMethods {
 							if methodSymbol.Name == httpMethod {
@@ -241,7 +240,7 @@ func (a *FlaskAnalyzer) extractRESTfulResources(result *model.ParseResult, conte
 				}
 				component.Metadata["http_methods"] = methods
 
-				info.Components = append(info.Components, component)
+				// info.Components = append(info.Components, component) // Removed as FrameworkInfo does not have Components
 			}
 		}
 	}
@@ -250,11 +249,10 @@ func (a *FlaskAnalyzer) extractRESTfulResources(result *model.ParseResult, conte
 func (a *FlaskAnalyzer) extractModels(result *model.ParseResult, content string, info *model.FrameworkInfo) {
 	// Find classes that inherit from db.Model
 	for _, symbol := range result.Symbols {
-		if symbol.Type == model.SymbolTypeClass {
+		if symbol.Kind == model.SymbolKindClass {
 			if a.isModelClass(symbol.Name, content) {
 				model := &model.Model{
 					Name:   symbol.Name,
-					Symbol: symbol,
 					Fields: make([]*model.ModelField, 0),
 				}
 

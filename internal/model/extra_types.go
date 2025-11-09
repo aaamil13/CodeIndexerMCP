@@ -376,7 +376,7 @@ type Model struct {
 	Fields        []*ModelField     `json:"fields,omitempty"`
 	Methods       []*Method         `json:"methods,omitempty"`
 	MetaOptions   map[string]string `json:"meta_options,omitempty"`
-	Relationships []*Relationship   `json:"relationships,omitempty"`
+	Relationships []*ModelRelation  `json:"relationships,omitempty"`
 }
 
 // Route represents a web route or endpoint

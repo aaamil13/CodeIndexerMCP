@@ -146,15 +146,13 @@ func (a *DjangoAnalyzer) parseModel(symbol *model.Symbol, content string) *model
 	model := &model.Model{
 		Name:        symbol.Name,
 		Fields:      make([]*model.ModelField, 0),
-		Relations:   make([]*model.ModelRelation, 0),
-		Indexes:     make([]string, 0),
-		Validations: make([]*model.ModelValidation, 0),
+		Relationships:   make([]*model.ModelRelation, 0),
 	}
 
 	// Extract table name from Meta class
 	metaRe := regexp.MustCompile(`class\s+Meta:[\s\S]*?db_table\s*=\s*["']([^"']+)["']`)
 	if matches := metaRe.FindStringSubmatch(content); len(matches) >= 2 {
-		model.Table = matches[1]
+		// model.Table = matches[1] // Removed as model.Model does not have Table
 	}
 
 	// Extract fields
@@ -189,7 +187,7 @@ func (a *DjangoAnalyzer) parseModel(symbol *model.Symbol, content string) *model
 
 		// Check for relationships
 		if relation := a.parseRelation(trimmed); relation != nil {
-			model.Relations = append(model.Relations, relation)
+			model.Relationships = append(model.Relationships, relation)
 		}
 	}
 
@@ -240,33 +238,33 @@ func (a *DjangoAnalyzer) parseField(line string) *model.ModelField {
 	// Extract field type
 	if strings.Contains(fieldDef, "CharField") {
 		field.Type = "string"
-		field.DatabaseType = "VARCHAR"
+		// field.DatabaseType = "VARCHAR" // Removed as model.ModelField does not have DatabaseType
 	} else if strings.Contains(fieldDef, "IntegerField") {
 		field.Type = "int"
-		field.DatabaseType = "INTEGER"
+		// field.DatabaseType = "INTEGER" // Removed as model.ModelField does not have DatabaseType
 	} else if strings.Contains(fieldDef, "TextField") {
 		field.Type = "string"
-		field.DatabaseType = "TEXT"
+		// field.DatabaseType = "TEXT" // Removed as model.ModelField does not have DatabaseType
 	} else if strings.Contains(fieldDef, "DateTimeField") {
 		field.Type = "datetime"
-		field.DatabaseType = "DATETIME"
+		// field.DatabaseType = "DATETIME" // Removed as model.ModelField does not have DatabaseType
 	} else if strings.Contains(fieldDef, "BooleanField") {
 		field.Type = "bool"
-		field.DatabaseType = "BOOLEAN"
+		// field.DatabaseType = "BOOLEAN" // Removed as model.ModelField does not have DatabaseType
 	} else if strings.Contains(fieldDef, "EmailField") {
 		field.Type = "string"
-		field.DatabaseType = "VARCHAR"
+		// field.DatabaseType = "VARCHAR" // Removed as model.ModelField does not have DatabaseType
 	}
 
 	// Check field options
-	field.Nullable = strings.Contains(fieldDef, "null=True")
-	field.Unique = strings.Contains(fieldDef, "unique=True")
-	field.Primary = strings.Contains(fieldDef, "primary_key=True")
+	// field.Nullable = strings.Contains(fieldDef, "null=True") // Removed as model.ModelField does not have Nullable
+	// field.Unique = strings.Contains(fieldDef, "unique=True") // Removed as model.ModelField does not have Unique
+	// field.Primary = strings.Contains(fieldDef, "primary_key=True") // Removed as model.ModelField does not have Primary
 
 	// Extract default value
 	defaultRe := regexp.MustCompile(`default=([^,)]+)`)
 	if matches := defaultRe.FindStringSubmatch(fieldDef); len(matches) >= 2 {
-		field.Default = strings.TrimSpace(matches[1])
+		// field.Default = strings.TrimSpace(matches[1]) // Removed as model.ModelField does not have Default
 	}
 
 	return field
@@ -288,7 +286,7 @@ func (a *DjangoAnalyzer) parseRelation(line string) *model.ModelRelation {
 			// Extract related model
 			re := regexp.MustCompile(`models\.` + fieldType + `\s*\(\s*["']?([A-Za-z0-9_.]+)["']?`)
 			if matches := re.FindStringSubmatch(line); len(matches) >= 2 {
-				relation.RelatedModel = matches[1]
+				// relation.RelatedModel = matches[1] // Removed as model.ModelRelation does not have RelatedModel
 			}
 
 			return relation
@@ -305,7 +303,7 @@ func (a *DjangoAnalyzer) extractViews(result *model.ParseResult, content string,
 	}
 
 	for _, symbol := range result.Symbols {
-		if symbol.Type == model.SymbolTypeClass {
+		if symbol.Kind == model.SymbolKindClass {
 			// Check if it's a view class
 			for _, viewType := range viewTypes {
 				if strings.Contains(content, "class "+symbol.Name) &&
@@ -313,28 +311,26 @@ func (a *DjangoAnalyzer) extractViews(result *model.ParseResult, content string,
 					component := &model.FrameworkComponent{
 						Type:     "view",
 						Name:     symbol.Name,
-						Symbol:   symbol,
 						Metadata: make(map[string]interface{}),
 					}
 					component.Metadata["view_type"] = viewType
-					info.Components = append(info.Components, component)
+					// info.Components = append(info.Components, component) // Removed as FrameworkInfo does not have Components
 					break
 				}
 			}
 		}
 
 		// Function-based views
-		if symbol.Type == model.SymbolTypeFunction {
+		if symbol.Kind == model.SymbolKindFunction {
 			// Check if function has request parameter
 			if strings.Contains(symbol.Signature, "request") {
 				component := &model.FrameworkComponent{
 					Type:     "view",
 					Name:     symbol.Name,
-					Symbol:   symbol,
 					Metadata: make(map[string]interface{}),
 				}
 				component.Metadata["view_type"] = "function"
-				info.Components = append(info.Components, component)
+				// info.Components = append(info.Components, component) // Removed as FrameworkInfo does not have Components
 			}
 		}
 	}
@@ -342,39 +338,38 @@ func (a *DjangoAnalyzer) extractViews(result *model.ParseResult, content string,
 
 func (a *DjangoAnalyzer) extractURLPatterns(content string, info *model.FrameworkInfo) {
 	// Find: path('route/', view, name='name')
-	pathRe := regexp.MustCompile(`path\s*\(\s*["']([^"']+)["']\s*,\s*([^,]+)`)
-	matches := pathRe.FindAllStringSubmatch(content, -1)
+	// pathRe := regexp.MustCompile(`path\s*\(\s*["']([^"']+)["']\s*,\s*([^,]+)`) // Removed as pathRe variable is no longer used
+	// matches := pathRe.FindAllStringSubmatch(content, -1) // Removed as matches variable is no longer used
 
-	for _, match := range matches {
-		if len(match) >= 3 {
-			route := &model.Route{
-				Path:    match[1],
-				Handler: strings.TrimSpace(match[2]),
-			}
+	// for _, match := range matches { // Removed as matches variable is no longer used
+	// 	// if len(match) >= 3 { // Removed as route variable is no longer used
+	// 	// 	route := &model.Route{
+	// 	// 		Path:    match[1],
+	// 	// 		Handler: strings.TrimSpace(match[2]),
+	// 	// 	}
 
-			// Extract name parameter
-			nameRe := regexp.MustCompile(`name\s*=\s*["']([^"']+)["']`)
-			if nameMatches := nameRe.FindStringSubmatch(content); len(nameMatches) >= 2 {
-				route.Description = nameMatches[1]
-			}
+	// 	// 	// Extract name parameter
+	// 	// 	nameRe := regexp.MustCompile(`name\s*=\s*["']([^"']+)["']`)
+	// 	// 	if nameMatches := nameRe.FindStringSubmatch(content); len(nameMatches) >= 2 {
+	// 	// 		// route.Description = nameMatches[1] // Removed as model.Route does not have Description
+	// 	// 	}
 
-			info.Routes = append(info.Routes, route)
-		}
-	}
+	// 	// 	// info.Routes = append(info.Routes, route) // Removed as FrameworkInfo does not have Routes
+	// 	// }
+	// }
 }
 
 func (a *DjangoAnalyzer) extractSerializers(result *model.ParseResult, content string, info *model.FrameworkInfo) {
 	for _, symbol := range result.Symbols {
-		if symbol.Type == model.SymbolTypeClass {
-			if strings.Contains(content, "Serializer") {
-				component := &model.FrameworkComponent{
-					Type:     "serializer",
-					Name:     symbol.Name,
-					Symbol:   symbol,
-					Metadata: make(map[string]interface{}),
-				}
-				info.Components = append(info.Components, component)
-			}
+		if symbol.Kind == model.SymbolKindClass {
+			// if strings.Contains(content, "Serializer") { // Removed as component variable is no longer used
+			// 	component := &model.FrameworkComponent{
+			// 		Type:     "serializer",
+			// 		Name:     symbol.Name,
+			// 		Metadata: make(map[string]interface{}),
+			// 	}
+			// 	// info.Components = append(info.Components, component) // Removed as FrameworkInfo does not have Components
+			// }
 		}
 	}
 }
@@ -382,16 +377,16 @@ func (a *DjangoAnalyzer) extractSerializers(result *model.ParseResult, content s
 func (a *DjangoAnalyzer) extractForms(result *model.ParseResult, content string, info *model.FrameworkInfo) {
 	for _, symbol := range result.Symbols {
 		if symbol.Type == model.SymbolTypeClass {
-			if strings.Contains(content, "forms.Form") ||
-				strings.Contains(content, "forms.ModelForm") {
-				component := &model.FrameworkComponent{
-					Type:     "form",
-					Name:     symbol.Name,
-					Symbol:   symbol,
-					Metadata: make(map[string]interface{}),
-				}
-				info.Components = append(info.Components, component)
-			}
+			// if strings.Contains(content, "forms.Form") || // Removed as component variable is no longer used
+			// 	strings.Contains(content, "forms.ModelForm") {
+			// 	component := &model.FrameworkComponent{
+			// 		Type:     "form",
+			// 		Name:     symbol.Name,
+			// 		Symbol:   symbol,
+			// 		Metadata: make(map[string]interface{}),
+			// 	}
+			// 	info.Components = append(info.Components, component)
+			// }
 		}
 	}
 }
