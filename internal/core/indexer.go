@@ -171,20 +171,27 @@ func (idx *Indexer) Initialize() error {
 		project = &model.Project{
 			Path:          idx.projectPath,
 			Name:          projectName,
-			LanguageStats: make(map[string]int),
+			LanguageStats: make(map[string]int), // Initialize empty map
 			CreatedAt:     time.Now(),
+			LastIndexed:   time.Time{}, // Initialize to zero time
 		}
 
 		if err := idx.db.CreateProject(project); err != nil {
 			return fmt.Errorf("failed to create project: %w", err)
 		}
+		idx.project = project // Update idx.project with the newly created project (which now has an ID)
 
 		idx.logger.Info("Created new project:", projectName)
 	} else {
+		// Ensure LanguageStats is not nil if loaded from DB
+		if project.LanguageStats == nil {
+			project.LanguageStats = make(map[string]int)
+		}
 		idx.logger.Info("Loaded existing project:", projectName)
 	}
 
 	idx.project = project
+	idx.logger.Debug("Initialized project with ID:", idx.project.ID)
 
 	// Initialize AI helpers
 	idx.contextExtractor = ai.NewContextExtractor(idx.db)
@@ -202,13 +209,18 @@ func (idx *Indexer) Initialize() error {
 // Close closes the indexer and releases resources
 func (idx *Indexer) Close() error {
 	if idx.db != nil {
-		return idx.db.Close()
+		err := idx.db.Close()
+		idx.db = nil // Set db to nil after closing
+		return err
 	}
 	return nil
 }
 
 // IndexAll indexes all files in the project
 func (idx *Indexer) IndexAll() error {
+	if idx.db == nil {
+		return fmt.Errorf("indexer is closed")
+	}
 	idx.logger.Info("Starting full index of project")
 	startTime := time.Now()
 
@@ -227,6 +239,17 @@ func (idx *Indexer) IndexAll() error {
 
 	// Update project stats
 	idx.project.LastIndexed = time.Now()
+	// Recalculate language stats
+	allFiles, err := idx.db.GetAllFilesForProject(idx.project.ID)
+	if err != nil {
+		return fmt.Errorf("failed to get all files for language stats: %w", err)
+	}
+	newLanguageStats := make(map[string]int)
+	for _, file := range allFiles {
+		newLanguageStats[file.Language]++
+	}
+	idx.project.LanguageStats = newLanguageStats
+
 	if err := idx.db.UpdateProject(idx.project); err != nil {
 		return fmt.Errorf("failed to update project: %w", err)
 	}
@@ -302,6 +325,7 @@ func (idx *Indexer) IndexFile(filePath string) error {
 		idx.logger.Warnf("Failed to parse %s: %v", relPath, err)
 		return nil // Don't fail on parse errors
 	}
+	idx.logger.Debugf("Parsed file %s, found %d symbols", relPath, len(parseResult.Symbols))
 
 	// Count lines
 	lines, _ := utils.CountLines(filePath)
@@ -319,6 +343,10 @@ func (idx *Indexer) IndexFile(filePath string) error {
 			Hash:         hash,
 			LastModified: fileInfo.ModTime(),
 			LastIndexed:  time.Now(),
+		}
+
+		if existingFile != nil {
+			file.ID = existingFile.ID // Set the ID for update
 		}
 
 		if err := idx.db.SaveFile(file); err != nil { // Use idx.db directly
@@ -418,6 +446,7 @@ func (idx *Indexer) scanFiles() ([]string, error) {
 		return nil, fmt.Errorf("failed to scan files: %w", err)
 	}
 
+	idx.logger.Infof("scanFiles found %d files", len(files))
 	return files, err
 }
 
@@ -477,15 +506,29 @@ func (idx *Indexer) GetFileStructure(filePath string) (*model.ParseResult, error
 
 // GetProjectOverview returns project overview
 func (idx *Indexer) GetProjectOverview() (*model.ProjectOverview, error) {
-	stats, err := idx.db.Stats()
+	totalFiles := 0
+	files, err := idx.db.GetAllFilesForProject(idx.project.ID)
 	if err != nil {
 		return nil, err
+	}
+	totalFiles = len(files)
+
+	totalSymbols := 0
+	// TODO: Implement GetTotalSymbols in database.Manager
+	// For now, we'll just count symbols from files if available
+	for _, file := range files {
+		symbols, err := idx.db.GetSymbolsByFile(file.Path)
+		if err != nil {
+			idx.logger.Warnf("Failed to get symbols for file %s: %v", file.Path, err)
+			continue
+		}
+		totalSymbols += len(symbols)
 	}
 
 	return &model.ProjectOverview{
 		Project:       idx.project,
-		TotalFiles:    stats["files"],
-		TotalSymbols:  stats["symbols"],
+		TotalFiles:    totalFiles,
+		TotalSymbols:  totalSymbols,
 		LanguageStats: idx.project.LanguageStats,
 	}, nil
 }

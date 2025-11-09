@@ -9,7 +9,7 @@ import (
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 	"github.com/aaamil13/CodeIndexerMCP/internal/utils"
-	// _ "github.com/mattn/go-sqlite3" // Use mattn/go-sqlite3 driver
+	_ "github.com/mattn/go-sqlite3" // Use mattn/go-sqlite3 driver
 )
 
 //go:embed schema.sql
@@ -49,8 +49,39 @@ func (m *Manager) Stats() (map[string]int, error) {
 }
 
 func (m *Manager) SearchSymbols(opts model.SearchOptions) ([]*model.Symbol, error) {
-	// TODO: Implement this properly
-	return nil, nil
+	query := `
+        SELECT id, name, kind, file_path, language,
+               start_line, start_column, start_byte,
+               end_line, end_column, end_byte, content_hash
+        FROM symbols
+    `
+	m.logger.Debug("SearchSymbols query (simplified):", "query", query)
+
+	rows, err := m.db.Query(query)
+	if err != nil {
+		m.logger.Error("SearchSymbols query failed:", "error", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var symbols []*model.Symbol
+	for rows.Next() {
+		s := &model.Symbol{}
+		err := rows.Scan(
+			&s.ID, &s.Name, &s.Kind, &s.File, &s.Language,
+			&s.Range.Start.Line, &s.Range.Start.Column, &s.Range.Start.Byte,
+			&s.Range.End.Line, &s.Range.End.Column, &s.Range.End.Byte, &s.ContentHash,
+		)
+		if err != nil {
+			m.logger.Error("SearchSymbols scan failed:", "error", err)
+			return nil, err
+		}
+		m.logger.Debug("Found symbol in search:", "ID", s.ID, "Name", s.Name)
+		symbols = append(symbols, s)
+	}
+	m.logger.Debug("SearchSymbols found:", "count", len(symbols))
+
+	return symbols, nil
 }
 
 func (m *Manager) SaveRelationship(rel *model.Relationship) error {
@@ -58,11 +89,25 @@ func (m *Manager) SaveRelationship(rel *model.Relationship) error {
 }
 
 func (m *Manager) SaveImport(imp *model.Import) error {
-	return nil
+	query := `
+        INSERT INTO imports (file_path, import_path, alias, is_wildcard, start_line)
+        VALUES (?, ?, ?, ?, ?)
+    `
+	_, err := m.db.Exec(query,
+		imp.FilePath, imp.Path, imp.Alias, imp.IsWildcard, imp.Range.Start.Line,
+	)
+	return err
 }
 
 func (m *Manager) SaveReference(ref *model.Reference) error {
-	return nil
+	query := `
+        INSERT INTO code_references (source_symbol_id, target_symbol_name, reference_type, file_path, line, column)
+        VALUES (?, ?, ?, ?, ?, ?)
+    `
+	_, err := m.db.Exec(query,
+		ref.SourceSymbolID, ref.TargetSymbolName, ref.ReferenceType, ref.FilePath, ref.Line, ref.Column,
+	)
+	return err
 }
 
 func (m *Manager) DeleteFile(fileID int) error {
@@ -70,17 +115,51 @@ func (m *Manager) DeleteFile(fileID int) error {
 }
 
 func (m *Manager) DeleteImportsByFile(fileID int) error {
-	// TODO: Implement this properly
-	return nil
+	_, err := m.db.Exec("DELETE FROM imports WHERE file_path = (SELECT path FROM files WHERE id = ?)", fileID)
+	return err
 }
 
 func (m *Manager) DeleteSymbolsByFile(fileID int) error {
-	// TODO: Implement this properly
-	return nil
+	_, err := m.db.Exec("DELETE FROM symbols WHERE file_path = (SELECT path FROM files WHERE id = ?)", fileID)
+	return err
 }
 
 func (m *Manager) SaveFile(file *model.File) error {
-	// TODO: Implement this properly
+	if file.ID == 0 { // Insert new file
+		query := `
+            INSERT INTO files (
+                project_id, path, relative_path, language, size, lines_of_code, hash, last_modified, last_indexed
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `
+		result, err := m.db.Exec(query,
+			file.ProjectID, file.Path, file.RelativePath, file.Language, file.Size,
+			file.LinesOfCode, file.Hash, file.LastModified.Format(time.RFC3339), file.LastIndexed.Format(time.RFC3339),
+		)
+		if err != nil {
+			return err
+		}
+
+		id, err := result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		file.ID = int(id)
+	} else { // Update existing file
+		query := `
+            UPDATE files
+            SET project_id = ?, path = ?, relative_path = ?, language = ?, size = ?,
+                lines_of_code = ?, hash = ?, last_modified = ?, last_indexed = ?
+            WHERE id = ?
+        `
+		_, err := m.db.Exec(query,
+			file.ProjectID, file.Path, file.RelativePath, file.Language, file.Size,
+			file.LinesOfCode, file.Hash, file.LastModified.Format(time.RFC3339), file.LastIndexed.Format(time.RFC3339),
+			file.ID,
+		)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -89,9 +168,10 @@ func (m *Manager) Transaction(f func(tx *sql.Tx) error) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
 
-	if err := f(tx); err != nil {
+	err = f(tx)
+	if err != nil {
+		tx.Rollback()
 		return err
 	}
 
@@ -99,8 +179,35 @@ func (m *Manager) Transaction(f func(tx *sql.Tx) error) error {
 }
 
 func (m *Manager) GetFileByPath(projectID int, relPath string) (*model.File, error) {
-	// TODO: Implement this properly
-	return nil, nil
+	query := `
+        SELECT id, project_id, path, relative_path, language, size, lines_of_code, hash, last_modified, last_indexed
+        FROM files
+        WHERE project_id = ? AND relative_path = ?
+    `
+	row := m.db.QueryRow(query, projectID, relPath)
+
+	f := &model.File{}
+	var lastModifiedStr, lastIndexedStr string
+	err := row.Scan(
+		&f.ID, &f.ProjectID, &f.Path, &f.RelativePath, &f.Language, &f.Size, &f.LinesOfCode, &f.Hash, &lastModifiedStr, &lastIndexedStr,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	f.LastModified, err = time.Parse(time.RFC3339, lastModifiedStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse last_modified time: %w", err)
+	}
+	f.LastIndexed, err = time.Parse(time.RFC3339, lastIndexedStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse last_indexed time: %w", err)
+	}
+
+	return f, nil
 }
 
 func (m *Manager) GetFile(id int64) (*model.File, error) {
@@ -112,8 +219,9 @@ func (m *Manager) GetFile(id int64) (*model.File, error) {
 	row := m.db.QueryRow(query, id)
 
 	f := &model.File{}
+	var lastModifiedStr, lastIndexedStr string
 	err := row.Scan(
-		&f.ID, &f.ProjectID, &f.Path, &f.RelativePath, &f.Language, &f.Size, &f.LinesOfCode, &f.Hash, &f.LastModified, &f.LastIndexed,
+		&f.ID, &f.ProjectID, &f.Path, &f.RelativePath, &f.Language, &f.Size, &f.LinesOfCode, &f.Hash, &lastModifiedStr, &lastIndexedStr,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -121,39 +229,118 @@ func (m *Manager) GetFile(id int64) (*model.File, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	f.LastModified, err = time.Parse(time.RFC3339, lastModifiedStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse last_modified time: %w", err)
+	}
+	f.LastIndexed, err = time.Parse(time.RFC3339, lastIndexedStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse last_indexed time: %w", err)
+	}
 	return f, nil
 }
 
 func (m *Manager) UpdateProject(project *model.Project) error {
-	// TODO: Implement this properly
-	return nil
+	query := `
+        UPDATE projects
+        SET name = ?, language_stats = ?, last_indexed = ?
+        WHERE id = ?
+    `
+	languageStatsJSON, err := json.Marshal(project.LanguageStats)
+	if err != nil {
+		return fmt.Errorf("failed to marshal language stats: %w", err)
+	}
+
+	_, err = m.db.Exec(query,
+		project.Name, string(languageStatsJSON), project.LastIndexed.Format(time.RFC3339), project.ID,
+	)
+	return err
 }
 
 func (m *Manager) CreateProject(project *model.Project) error {
-	// TODO: Implement this properly
+	query := `
+        INSERT INTO projects (path, name, language_stats, last_indexed, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    `
+	languageStatsJSON, err := json.Marshal(project.LanguageStats)
+	if err != nil {
+		return fmt.Errorf("failed to marshal language stats: %w", err)
+	}
+
+	result, err := m.db.Exec(query,
+		project.Path, project.Name, string(languageStatsJSON),
+		project.LastIndexed.Format(time.RFC3339), project.CreatedAt.Format(time.RFC3339),
+	)
+	if err != nil {
+		return err
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return err
+	}
+	project.ID = int(id)
 	return nil
 }
 
 func (m *Manager) GetProject(projectPath string) (*model.Project, error) {
-	// TODO: Implement this properly
-	return &model.Project{
-		ID:   1,
-		Path: projectPath,
-		Name: "dummy",
-	}, nil
-}
+	query := `
+        SELECT id, path, name, language_stats, last_indexed, created_at
+        FROM projects
+        WHERE path = ?
+    `
+	row := m.db.QueryRow(query, projectPath)
 
+	p := &model.Project{}
+	var languageStatsJSON, lastIndexedStr, createdAtStr sql.NullString
+	err := row.Scan(
+		&p.ID, &p.Path, &p.Name, &languageStatsJSON, &lastIndexedStr, &createdAtStr,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if languageStatsJSON.Valid {
+		err = json.Unmarshal([]byte(languageStatsJSON.String), &p.LanguageStats)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal language stats: %w", err)
+		}
+	} else {
+		p.LanguageStats = make(map[string]int)
+	}
+
+	if lastIndexedStr.Valid {
+		p.LastIndexed, err = time.Parse(time.RFC3339, lastIndexedStr.String)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse last_indexed time: %w", err)
+		}
+	}
+	if createdAtStr.Valid {
+		p.CreatedAt, err = time.Parse(time.RFC3339, createdAtStr.String)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse created_at time: %w", err)
+		}
+	}
+
+	return p, nil
+}
 func (m *Manager) SaveSymbol(symbol *model.Symbol) error {
 	query := `
         INSERT OR REPLACE INTO symbols (
-            id, name, kind, file_path, language,
-            signature, documentation, visibility,
+            id, name, kind, file_path, language, type,
             start_line, start_column, start_byte,
-            end_line, end_column, end_byte, content_hash, status, priority,
-            assigned_agent, created_at, updated_at, metadata
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            end_line, end_column, end_byte, content_hash
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
 	
+
+
+
+
 	toNullString := func(s string) sql.NullString {
 		if s == "" {
 			return sql.NullString{Valid: false}
@@ -167,9 +354,6 @@ func (m *Manager) SaveSymbol(symbol *model.Symbol) error {
 		"Kind", string(symbol.Kind),
 		"File", symbol.File,
 		"Language", symbol.Language,
-		"Signature", symbol.Signature,
-		"Documentation", symbol.Documentation,
-		"Visibility", string(symbol.Visibility),
 		"StartLine", symbol.Range.Start.Line,
 		"StartColumn", symbol.Range.Start.Column,
 		"StartByte", symbol.Range.Start.Byte,
@@ -177,38 +361,18 @@ func (m *Manager) SaveSymbol(symbol *model.Symbol) error {
 		"EndColumn", symbol.Range.End.Column,
 		"EndByte", symbol.Range.End.Byte,
 		"ContentHash", symbol.ContentHash,
-		"Status", string(symbol.Status),
-		"Priority", symbol.Priority,
-		"AssignedAgent", symbol.AssignedAgent,
-		"CreatedAt", symbol.CreatedAt.Format(time.RFC3339),
-		"UpdatedAt", symbol.UpdatedAt.Format(time.RFC3339),
-		"Metadata", symbol.Metadata,
 	)
 
-	var metadataNullString sql.NullString
-	if symbol.Metadata == nil || len(symbol.Metadata) == 0 {
-		metadataNullString = sql.NullString{Valid: false}
-	} else {
-		var marshalErr error
-		metadataJSON, marshalErr := json.Marshal(symbol.Metadata)
-		if marshalErr != nil {
-			return fmt.Errorf("failed to marshal metadata: %w", marshalErr)
-		}
-		metadataNullString = toNullString(string(metadataJSON))
-	}
+
+
+
 
 	_, err := m.db.Exec(query,
 		symbol.ID, symbol.Name, string(symbol.Kind), symbol.File, symbol.Language,
-		toNullString(symbol.Signature),
-		toNullString(symbol.Documentation),
-		toNullString(string(symbol.Visibility)),
+		toNullString(symbol.Type),
 		int64(symbol.Range.Start.Line), int64(symbol.Range.Start.Column), int64(symbol.Range.Start.Byte),
 		int64(symbol.Range.End.Line), int64(symbol.Range.End.Column), int64(symbol.Range.End.Byte),
-		symbol.ContentHash, string(symbol.Status), int64(symbol.Priority),
-		toNullString(symbol.AssignedAgent),
-		symbol.CreatedAt.Format(time.RFC3339),
-		symbol.UpdatedAt.Format(time.RFC3339),
-		metadataNullString,
+		symbol.ContentHash,
 	)
 
 	return err
@@ -431,10 +595,9 @@ func (m *Manager) GetSymbolsByStatus(status model.DevelopmentStatus) ([]*model.S
 
 func (m *Manager) GetSymbolByName(name string) (*model.Symbol, error) {
 	query := `
-        SELECT id, name, kind, file_path, language, signature, documentation,
-               visibility, start_line, start_column, start_byte,
-               end_line, end_column, end_byte, content_hash, status, priority,
-               assigned_agent, created_at, updated_at, metadata
+        SELECT id, name, kind, file_path, language, type,
+               start_line, start_column, start_byte,
+               end_line, end_column, end_byte, content_hash
         FROM symbols
         WHERE name = ?
     `
@@ -444,10 +607,9 @@ func (m *Manager) GetSymbolByName(name string) (*model.Symbol, error) {
 
 func (m *Manager) GetSymbol(id string) (*model.Symbol, error) {
 	query := `
-        SELECT id, name, kind, file_path, language, signature, documentation,
-               visibility, start_line, start_column, start_byte,
-               end_line, end_column, end_byte, content_hash, status, priority,
-               assigned_agent, created_at, updated_at, metadata
+        SELECT id, name, kind, file_path, language, type,
+               start_line, start_column, start_byte,
+               end_line, end_column, end_byte, content_hash
         FROM symbols
         WHERE id = ?
     `
@@ -457,15 +619,12 @@ func (m *Manager) GetSymbol(id string) (*model.Symbol, error) {
 
 func (m *Manager) scanSymbol(row *sql.Row) (*model.Symbol, error) {
 	s := &model.Symbol{}
-	var metadataStr string
-	var createdAt, updatedAt time.Time
-	var assignedAgent sql.NullString // Use sql.NullString for nullable columns
+	var symbolType sql.NullString // Use sql.NullString for nullable 'type' column
 
 	err := row.Scan(
-		&s.ID, &s.Name, &s.Kind, &s.File, &s.Language, &s.Signature, &s.Documentation,
-		&s.Visibility, &s.Range.Start.Line, &s.Range.Start.Column, &s.Range.Start.Byte,
-		&s.Range.End.Line, &s.Range.End.Column, &s.Range.End.Byte, &s.ContentHash, &s.Status, &s.Priority,
-		&assignedAgent, &createdAt, &updatedAt, &metadataStr,
+		&s.ID, &s.Name, &s.Kind, &s.File, &s.Language, &symbolType,
+		&s.Range.Start.Line, &s.Range.Start.Column, &s.Range.Start.Byte,
+		&s.Range.End.Line, &s.Range.End.Column, &s.Range.End.Byte, &s.ContentHash,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -474,17 +633,8 @@ func (m *Manager) scanSymbol(row *sql.Row) (*model.Symbol, error) {
 		return nil, err
 	}
 
-	s.CreatedAt = createdAt
-	s.UpdatedAt = updatedAt
-	if assignedAgent.Valid {
-		s.AssignedAgent = assignedAgent.String
-	}
-
-	if metadataStr != "" {
-		err = json.Unmarshal([]byte(metadataStr), &s.Metadata)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
-		}
+	if symbolType.Valid {
+		s.Type = symbolType.String
 	}
 
 	return s, nil
@@ -533,9 +683,10 @@ func (m *Manager) GetImportsByFile(filePath string) ([]*model.Import, error) {
 	for rows.Next() {
 		imp := &model.Import{}
 		var alias sql.NullString
+		var isWildcard bool // Use bool for BOOLEAN
 		var startLine sql.NullInt64
 		err := rows.Scan(
-			&imp.FilePath, &imp.Path, &alias, &imp.IsWildcard, &startLine,
+			&imp.FilePath, &imp.Path, &alias, &isWildcard, &startLine,
 		)
 		if err != nil {
 			return nil, err
@@ -543,6 +694,7 @@ func (m *Manager) GetImportsByFile(filePath string) ([]*model.Import, error) {
 		if alias.Valid {
 			imp.Alias = alias.String
 		}
+		imp.IsWildcard = isWildcard // Assign the scanned bool value
 		if startLine.Valid {
 			imp.Range.Start.Line = int(startLine.Int64)
 		}
@@ -554,10 +706,9 @@ func (m *Manager) GetImportsByFile(filePath string) ([]*model.Import, error) {
 
 func (m *Manager) GetSymbolsByFile(filePath string) ([]*model.Symbol, error) {
 	query := `
-        SELECT id, name, kind, file_path, language, signature, documentation,
-               visibility, start_line, start_column, start_byte,
-               end_line, end_column, end_byte, content_hash, status, priority,
-               assigned_agent, created_at, updated_at, metadata
+        SELECT id, name, kind, file_path, language, type,
+               start_line, start_column, start_byte,
+               end_line, end_column, end_byte, content_hash
         FROM symbols
         WHERE file_path = ?
     `
@@ -570,31 +721,17 @@ func (m *Manager) GetSymbolsByFile(filePath string) ([]*model.Symbol, error) {
 	var symbols []*model.Symbol
 	for rows.Next() {
 		s := &model.Symbol{}
-		var metadataStr string
-		var createdAt, updatedAt time.Time
-		var assignedAgent sql.NullString
-
+		var symbolType sql.NullString
 		err := rows.Scan(
-			&s.ID, &s.Name, &s.Kind, &s.File, &s.Language, &s.Signature, &s.Documentation,
-			&s.Visibility, &s.Range.Start.Line, &s.Range.Start.Column, &s.Range.Start.Byte,
-			&s.Range.End.Line, &s.Range.End.Column, &s.Range.End.Byte, &s.ContentHash, &s.Status, &s.Priority,
-			&assignedAgent, &createdAt, &updatedAt, &metadataStr,
+			&s.ID, &s.Name, &s.Kind, &s.File, &s.Language, &symbolType,
+			&s.Range.Start.Line, &s.Range.Start.Column, &s.Range.Start.Byte,
+			&s.Range.End.Line, &s.Range.End.Column, &s.Range.End.Byte, &s.ContentHash,
 		)
 		if err != nil {
 			return nil, err
 		}
-
-		s.CreatedAt = createdAt
-		s.UpdatedAt = updatedAt
-		if assignedAgent.Valid {
-			s.AssignedAgent = assignedAgent.String
-		}
-
-		if metadataStr != "" {
-			err = json.Unmarshal([]byte(metadataStr), &s.Metadata)
-			if err != nil {
-				return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
-			}
+		if symbolType.Valid {
+			s.Type = symbolType.String
 		}
 		symbols = append(symbols, s)
 	}
@@ -603,8 +740,46 @@ func (m *Manager) GetSymbolsByFile(filePath string) ([]*model.Symbol, error) {
 }
 
 func (m *Manager) GetAllFilesForProject(projectID int) ([]*model.File, error) {
-	// TODO: Implement this properly
-	return nil, nil
+	query := `
+        SELECT id, project_id, path, relative_path, language, size, lines_of_code, hash, last_modified, last_indexed
+        FROM files
+        WHERE project_id = ?
+    `
+	m.logger.Debug("GetAllFilesForProject query:", "query", query, "projectID", projectID)
+
+	rows, err := m.db.Query(query, projectID)
+	if err != nil {
+		m.logger.Error("GetAllFilesForProject query failed:", "error", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var files []*model.File
+	for rows.Next() {
+		f := &model.File{}
+		var lastModifiedStr, lastIndexedStr string
+		err := rows.Scan(
+			&f.ID, &f.ProjectID, &f.Path, &f.RelativePath, &f.Language, &f.Size, &f.LinesOfCode, &f.Hash, &lastModifiedStr, &lastIndexedStr,
+		)
+		if err != nil {
+			m.logger.Error("GetAllFilesForProject scan failed:", "error", err)
+			return nil, err
+		}
+
+		f.LastModified, err = time.Parse(time.RFC3339, lastModifiedStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse last_modified time: %w", err)
+		}
+		f.LastIndexed, err = time.Parse(time.RFC3339, lastIndexedStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse last_indexed time: %w", err)
+		}
+		files = append(files, f)
+		m.logger.Debug("Found file in GetAllFilesForProject:", "ID", f.ID, "Path", f.Path)
+	}
+	m.logger.Debug("GetAllFilesForProject found:", "count", len(files))
+
+	return files, nil
 }
 
 func (m *Manager) GetMethodsForType(typeSymbolID string) ([]*model.Method, error) {

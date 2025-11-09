@@ -1,6 +1,7 @@
 .PHONY: setup
 setup:
 	@echo "Downloading Tree-sitter Go bindings..."
+	go mod download
 	go mod tidy
 	@echo "Tree-sitter setup complete!"
 

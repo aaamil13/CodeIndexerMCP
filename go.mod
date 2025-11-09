@@ -7,4 +7,7 @@ require (
 	github.com/smacker/go-tree-sitter v0.0.0-20231219031718-233c2f923ac7
 )
 
-require golang.org/x/sys v0.13.0 // indirect
+require (
+	github.com/mattn/go-sqlite3 v1.14.32
+	golang.org/x/sys v0.13.0 // indirect
+)

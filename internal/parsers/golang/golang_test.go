@@ -237,7 +237,7 @@ var (
 func TestParsePrivateSymbols(t *testing.T) {
 	code := `package main
 
-func publicFunc() {}
+func PublicFunc() {}
 
 func privateFunc() {}
 `
@@ -252,8 +252,8 @@ func privateFunc() {}
 	}
 
 	for _, sym := range result.Symbols {
-			if sym.Name == "publicFunc" && sym.Visibility != model.VisibilityPublic {
-				t.Error("Expected publicFunc to be exported")
+			if sym.Name == "PublicFunc" && sym.Visibility != model.VisibilityPublic {
+				t.Error("Expected PublicFunc to be exported")
 			}
 			if sym.Name == "privateFunc" && sym.Visibility == model.VisibilityPublic {
 				t.Error("Expected privateFunc to not be exported")
