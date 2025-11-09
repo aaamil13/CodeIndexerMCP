@@ -96,7 +96,7 @@ func (a *FlaskAnalyzer) extractRoutes(result *model.ParseResult, content string,
 		if strings.Contains(line, "@app.route") || strings.Contains(line, "@blueprint.route") {
 			route := a.parseRoute(line, lines, i, result)
 			if route != nil {
-				// info.Routes = append(info.Routes, route) // Removed as FrameworkInfo does not have Routes
+				// info.Routes = append(info.Routes, route)
 			}
 		}
 	}
@@ -140,7 +140,7 @@ func (a *FlaskAnalyzer) parseRoute(decoratorLine string, lines []string, lineInd
 			}
 
 			// Extract route parameters from path
-			// route.Parameters = a.extractRouteParameters(route.Path) // Removed as model.Route does not have Parameters
+			// route.Parameters = a.extractRouteParameters(route.Path)
 			break
 		}
 	}
@@ -162,9 +162,9 @@ func (a *FlaskAnalyzer) extractRouteParameters(path string) []*model.RouteParame
 
 		if len(match) >= 3 {
 			if match[1] != "" {
-				// param.DataType = match[1] // Removed as model.RouteParameter does not have DataType
+				// param.DataType = match[1]
 			} else {
-				// param.DataType = "string" // Removed as model.RouteParameter does not have DataType
+				// param.DataType = "string"
 			}
 			param.Name = match[2]
 		}
@@ -184,12 +184,12 @@ func (a *FlaskAnalyzer) detectBlueprints(content string, info *model.FrameworkIn
 		// info.Patterns = append(info.Patterns, "Flask Blueprints")
 		for _, match := range matches {
 			if len(match) >= 2 {
-				// component := &model.FrameworkComponent{ // Removed as FrameworkInfo does not have Components
+				// component := &model.FrameworkComponent{
 				// 	Type:     "blueprint",
 				// 	Name:     match[1],
 				// 	Metadata: make(map[string]interface{}),
 				// }
-				// info.Components = append(info.Components, component) // Removed as FrameworkInfo does not have Components
+				// info.Components = append(info.Components, component)
 			}
 		}
 	}
@@ -209,7 +209,7 @@ func (a *FlaskAnalyzer) detectExtensions(content string, info *model.FrameworkIn
 
 	for extensionImport, _ := range extensions {
 		if strings.Contains(content, extensionImport) {
-			// info.Patterns = append(info.Patterns, description)
+
 		}
 	}
 }
@@ -240,7 +240,7 @@ func (a *FlaskAnalyzer) extractRESTfulResources(result *model.ParseResult, conte
 				}
 				component.Metadata["http_methods"] = methods
 
-				// info.Components = append(info.Components, component) // Removed as FrameworkInfo does not have Components
+				// info.Components = append(info.Components, component)
 			}
 		}
 	}
@@ -251,7 +251,7 @@ func (a *FlaskAnalyzer) extractModels(result *model.ParseResult, content string,
 	for _, symbol := range result.Symbols {
 		if symbol.Kind == model.SymbolKindClass {
 			if a.isModelClass(symbol.Name, content) {
-				model := &model.Model{
+				modelInstance := &model.Model{
 					Name:   symbol.Name,
 					Fields: make([]*model.ModelField, 0),
 				}
@@ -287,7 +287,7 @@ func (a *FlaskAnalyzer) extractModels(result *model.ParseResult, content string,
 								field.Type = "datetime"
 							}
 
-							model.Fields = append(model.Fields, field)
+							modelInstance.Fields = append(modelInstance.Fields, field)
 						}
 					}
 
@@ -297,7 +297,7 @@ func (a *FlaskAnalyzer) extractModels(result *model.ParseResult, content string,
 					}
 				}
 
-				info.Models = append(info.Models, model)
+				info.Models = append(info.Models, modelInstance)
 			}
 		}
 	}
