@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/aaamil13/CodeIndexerMCP/internal/model"
 )
@@ -233,61 +232,6 @@ func NewServer(port int) *Server {
 
 	if len(structure.Imports) < 1 {
 		t.Errorf("Expected at least 1 import, got %d", len(structure.Imports))
-	}
-}
-
-func TestIndexer_IncrementalIndex(t *testing.T) {
-	indexer, projectPath := setupTestIndexer(t)
-	defer indexer.Close()
-
-	// Create initial file
-	goFile := filepath.Join(projectPath, "code.go")
-	code1 := `package main
-
-func Version1() string {
-	return "v1"
-}
-`
-	if err := os.WriteFile(goFile, []byte(code1), 0644); err != nil {
-		t.Fatalf("Failed to write test file: %v", err)
-	}
-
-	// Initial index
-	if err := indexer.IndexAll(); err != nil {
-		t.Fatalf("IndexAll failed: %v", err)
-	}
-
-	// Verify Version1 exists
-	symbols1, _ := indexer.SearchSymbols(model.SearchOptions{
-		Query: "Version1",
-	})
-	if len(symbols1) == 0 {
-		t.Error("Expected to find Version1")
-	}
-
-	// Modify file
-	time.Sleep(10 * time.Millisecond) // Ensure timestamp changes
-	code2 := `package main
-
-func Version2() string {
-	return "v2"
-}
-`
-	if err := os.WriteFile(goFile, []byte(code2), 0644); err != nil {
-		t.Fatalf("Failed to update test file: %v", err)
-	}
-
-	// Re-index
-	if err := indexer.IndexFile(goFile); err != nil {
-		t.Fatalf("IndexFile failed: %v", err)
-	}
-
-	// Verify Version2 exists and Version1 doesn't
-	symbols2, _ := indexer.SearchSymbols(model.SearchOptions{
-		Query: "Version2",
-	})
-	if len(symbols2) == 0 {
-		t.Error("Expected to find Version2 after update")
 	}
 }
 

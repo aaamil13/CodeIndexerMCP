@@ -6,7 +6,7 @@ Get started with CodeIndexer in under 5 minutes!
 
 ## 📋 Prerequisites
 
-- **Go 1.21+** - [Download](https://golang.org/dl/)
+- **Go 1.24+** - [Download](https://golang.org/dl/)
 - **Git** - [Download](https://git-scm.com/downloads)
 - 500MB+ free disk space
 - 4GB+ RAM (8GB+ recommended for large projects)

@@ -54,7 +54,7 @@ build:
 ```go
 module github.com/aaamil13/CodeIndexerMCP
 
-go 1.21
+go 1.24.7
 
 require (
     github.com/smacker/go-tree-sitter v0.0.0-20231219031718-233c2f923ac7

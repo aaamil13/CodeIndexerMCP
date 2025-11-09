@@ -329,53 +329,27 @@ func (m *Manager) GetProject(projectPath string) (*model.Project, error) {
 	return p, nil
 }
 func (m *Manager) SaveSymbol(symbol *model.Symbol) error {
-	query := `
+    metadata, _ := json.Marshal(symbol.Metadata)
+    
+    query := `
         INSERT OR REPLACE INTO symbols (
-            id, name, kind, file_path, language, type,
-            start_line, start_column, start_byte,
-            end_line, end_column, end_byte, content_hash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            id, name, kind, file_path, language, signature, documentation,
+            visibility, start_line, start_column, start_byte,
+            end_line, end_column, end_byte, content_hash, status, priority,
+            assigned_agent, created_at, updated_at, metadata
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
-	
-
-
-
-
-	toNullString := func(s string) sql.NullString {
-		if s == "" {
-			return sql.NullString{Valid: false}
-		}
-		return sql.NullString{String: s, Valid: true}
-	}
-
-	m.logger.Debug("Saving symbol to DB:",
-		"ID", symbol.ID,
-		"Name", symbol.Name,
-		"Kind", string(symbol.Kind),
-		"File", symbol.File,
-		"Language", symbol.Language,
-		"StartLine", symbol.Range.Start.Line,
-		"StartColumn", symbol.Range.Start.Column,
-		"StartByte", symbol.Range.Start.Byte,
-		"EndLine", symbol.Range.End.Line,
-		"EndColumn", symbol.Range.End.Column,
-		"EndByte", symbol.Range.End.Byte,
-		"ContentHash", symbol.ContentHash,
-	)
-
-
-
-
-
-	_, err := m.db.Exec(query,
-		symbol.ID, symbol.Name, string(symbol.Kind), symbol.File, symbol.Language,
-		toNullString(symbol.Type),
-		int64(symbol.Range.Start.Line), int64(symbol.Range.Start.Column), int64(symbol.Range.Start.Byte),
-		int64(symbol.Range.End.Line), int64(symbol.Range.End.Column), int64(symbol.Range.End.Byte),
-		symbol.ContentHash,
-	)
-
-	return err
+    
+    _, err := m.db.Exec(query,
+        symbol.ID, symbol.Name, symbol.Kind, symbol.File, symbol.Language,
+        symbol.Signature, symbol.Documentation, symbol.Visibility,
+        symbol.Range.Start.Line, symbol.Range.Start.Column, symbol.Range.Start.Byte,
+        symbol.Range.End.Line, symbol.Range.End.Column, symbol.Range.End.Byte,
+        symbol.ContentHash, symbol.Status, symbol.Priority, symbol.AssignedAgent,
+        symbol.CreatedAt, symbol.UpdatedAt, string(metadata),
+    )
+    
+    return err
 }
 
 // 💡 ПОДОБРЕНИЕ #5: Проверка за промени чрез content hash
@@ -459,13 +433,95 @@ func (m *Manager) SaveFunction(function *model.Function) error {
 }
 
 func (m *Manager) SaveMethod(method *model.Method) error {
-	// TODO: Implement
-	return nil
+    tx, err := m.db.Begin()
+    if err != nil {
+        return err
+    }
+    defer tx.Rollback()
+    
+    // Запазване на символа
+    if err := m.SaveSymbol(&method.Symbol); err != nil {
+        return err
+    }
+    
+    // Запазване на функция детайли
+    funcQuery := `
+        INSERT OR REPLACE INTO functions (
+            symbol_id, return_type, is_async, is_generator, body, receiver_type, is_static
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `
+    
+    _, err = tx.Exec(funcQuery,
+        method.ID, method.ReturnType, method.IsAsync,
+        method.IsGenerator, method.Body, method.ReceiverType, method.IsStatic,
+    )
+    if err != nil {
+        return err
+    }
+    
+    // Запазване на параметри
+    for i, param := range method.Parameters {
+        paramQuery := `
+            INSERT INTO parameters (
+                function_id, name, type, default_value, position,
+                is_optional, is_variadic
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `
+        _, err = tx.Exec(paramQuery,
+            method.ID, param.Name, param.Type, param.DefaultValue,
+            i, param.IsOptional, param.IsVariadic,
+        )
+        if err != nil {
+            return err
+        }
+    }
+    
+    return tx.Commit()
 }
 
 func (m *Manager) SaveClass(class *model.Class) error {
-	// TODO: Implement
-	return nil
+    tx, err := m.db.Begin()
+    if err != nil {
+        return err
+    }
+    defer tx.Rollback()
+    
+    // Запазване на символа
+    if err := m.SaveSymbol(&class.Symbol); err != nil {
+        return err
+    }
+    
+    // Запазване на клас детайли
+    classQuery := `
+        INSERT OR REPLACE INTO classes (
+            symbol_id, is_abstract, is_interface
+        ) VALUES (?, ?, ?)
+    `
+    
+    _, err = tx.Exec(classQuery,
+        class.ID, class.IsAbstract, class.IsInterface,
+    )
+    if err != nil {
+        return err
+    }
+    
+    // Запазване на полета
+    for _, field := range class.Fields {
+        fieldQuery := `
+            INSERT INTO fields (
+                class_id, name, type, default_value, visibility, is_static, is_constant
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `
+        _, err = tx.Exec(fieldQuery,
+            class.ID, field.Name, field.Type, field.DefaultValue,
+            field.Visibility, field.IsStatic, field.IsConstant,
+        )
+        if err != nil {
+            return err
+        }
+    }
+    
+    return tx.Commit()
 }
 
 func (m *Manager) SaveFileSymbols(fileSymbols *model.FileSymbols) error {

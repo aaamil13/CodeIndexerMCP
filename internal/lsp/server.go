@@ -217,7 +217,7 @@ func (s *Server) handleTextDocumentDidOpen(msg *Message) (interface{}, error) {
 	}
 
 	// Index the opened document
-	go s.indexDocument(params.TextDocument.URI, []byte(params.TextDocument.Text))
+	go s.indexer.IndexFile(uriToPath(params.TextDocument.URI))
 
 	return nil, nil
 }
@@ -231,9 +231,7 @@ func (s *Server) handleTextDocumentDidChange(msg *Message) (interface{}, error) 
 
 	// Re-index the changed document
 	if len(params.ContentChanges) > 0 {
-		// For full sync, just use the last change
-		lastChange := params.ContentChanges[len(params.ContentChanges)-1]
-		go s.indexDocument(params.TextDocument.URI, []byte(lastChange.Text))
+		go s.indexer.IndexFile(uriToPath(params.TextDocument.URI))
 	}
 
 	return nil, nil
@@ -254,7 +252,7 @@ func (s *Server) handleTextDocumentDidSave(msg *Message) (interface{}, error) {
 
 	// Re-index on save
 	if params.Text != nil {
-		go s.indexDocument(params.TextDocument.URI, []byte(*params.Text))
+		go s.indexer.IndexFile(uriToPath(params.TextDocument.URI))
 	}
 
 	return nil, nil
@@ -679,13 +677,6 @@ func (s *Server) indexWorkspace(uri string) {
 	s.indexer.IndexAll()
 }
 
-func (s *Server) indexDocument(uri string, content []byte) {
-	// Index single document
-	path := uriToPath(uri)
-
-	// This is simplified - in production would need to get/create project
-	s.indexer.IndexFile(path)
-}
 
 func (s *Server) getSymbolAtPosition(uri string, pos Position) (*model.Symbol, error) {
 	fileID, err := s.getFileIDFromURI(uri)

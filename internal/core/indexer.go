@@ -1,536 +1,468 @@
 package core
 
 import (
-	gosql "database/sql"
-	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
-	"time"
-
-	"github.com/aaamil13/CodeIndexerMCP/internal/ai"
-	"github.com/aaamil13/CodeIndexerMCP/internal/database"
-	"github.com/aaamil13/CodeIndexerMCP/internal/model"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parser"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/bash"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/c"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/config"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/cpp"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/csharp"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/css"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/golang"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/html"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/java"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/kotlin"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/php"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/powershell"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/python"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/rst"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/ruby"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/rust"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/sql"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/swift"
-	"github.com/aaamil13/CodeIndexerMCP/internal/parsers/typescript"
-	"github.com/aaamil13/CodeIndexerMCP/internal/utils"
+    "fmt"
+    "os"
+    "path/filepath"
+    "sync"
+    "time"
+    
+    "github.com/aaamil13/CodeIndexerMCP/internal/ai"
+    "github.com/aaamil13/CodeIndexerMCP/internal/database"
+    "github.com/aaamil13/CodeIndexerMCP/internal/model"
+    "github.com/aaamil13/CodeIndexerMCP/internal/parsing"
+    "github.com/aaamil13/CodeIndexerMCP/internal/parsing/extractors"
+    "github.com/aaamil13/CodeIndexerMCP/internal/utils"
 )
 
-// Indexer is the main code indexer
 type Indexer struct {
-	projectPath      string
-	db               *database.Manager
-	parsers          *parser.Registry
-	ignoreMatcher    *utils.IgnoreMatcher
-	project          *model.Project
-	logger           *utils.Logger
-	config           *Config
-	watcher          *Watcher
-	// AI helpers
-	contextExtractor *ai.ContextExtractor
-	impactAnalyzer   *ai.ImpactAnalyzer
-	metricsCalc      *ai.MetricsCalculator
-	snippetExtractor *ai.SnippetExtractor
-	usageAnalyzer    *ai.UsageAnalyzer
-	changeTracker    *ai.ChangeTracker
-	depGraphBuilder  *ai.DependencyGraphBuilder
-	typeValidator    *ai.TypeValidator
+    projectPath    string
+    dbManager      *database.Manager
+    ignoreMatcher  *utils.IgnoreMatcher
+    project        *model.Project
+    logger         *utils.Logger
+    
+    grammarManager *parsing.GrammarManager
+    astProvider    *parsing.ASTProvider
+    queryEngine    *parsing.QueryEngine
+    extractors     map[string]Extractor
+    
+    watcher        *Watcher
+    config         Config
+    
+    // AI helpers
+    contextExtractor *ai.ContextExtractor
+    impactAnalyzer   *ai.ImpactAnalyzer
+    metricsCalc      *ai.MetricsCalculator
+    snippetExtractor *ai.SnippetExtractor
+    usageAnalyzer    *ai.UsageAnalyzer
+    changeTracker    *ai.ChangeTracker
+    depGraphBuilder  *ai.DependencyGraphBuilder
+    typeValidator    *ai.TypeValidator
 }
 
-// Config holds indexer configuration
+type Extractor interface {
+    ExtractAll(parseResult *parsing.ParseResult, filePath string) (*model.FileSymbols, error)
+}
+
 type Config struct {
-	IndexDir    string   // Directory for index data (default: .projectIndex)
-	WorkerCount int      // Number of parallel workers (default: CPU count)
-	BatchSize   int      // Batch size for database operations
-	Exclude     []string // Additional exclude patterns
+    IndexDir     string   // Directory for index data (default: .projectIndex)
+    WorkerCount  int      // Number of parallel workers (default: CPU count)
+    BatchSize    int      // Batch size for database operations
+    ExcludePaths []string // Additional exclude patterns
+    IncludeExts  map[string]bool // Extensions to include
 }
 
-// NewIndexer creates a new indexer for the given project path
 func NewIndexer(projectPath string, cfg *Config) (*Indexer, error) {
-	if cfg == nil {
-		cfg = &Config{
-			IndexDir:    ".projectIndex",
-			WorkerCount: runtime.NumCPU(),
-			BatchSize:   100,
-		}
-	}
-
-	logger := utils.NewLogger("[Indexer]")
-
-	// Initialize parser registry
-	reg := parser.NewRegistry()
-
-	// Register all built-in parsers (23 languages)
-	// Core languages
-	reg.RegisterParser(golang.NewParser())
-	reg.RegisterParser(python.NewParser())
-	reg.RegisterParser(typescript.NewTypeScriptParser())
-
-	// JVM languages
-	reg.RegisterParser(java.NewParser())
-	reg.RegisterParser(kotlin.NewParser())
-
-	// .NET languages
-	reg.RegisterParser(csharp.NewParser())
-
-	// System languages
-	reg.RegisterParser(c.NewParser())
-	reg.RegisterParser(cpp.NewParser())
-	reg.RegisterParser(rust.NewParser())
-
-	// Web languages
-	reg.RegisterParser(php.NewParser())
-	reg.RegisterParser(ruby.NewParser())
-
-	// Mobile
-	reg.RegisterParser(swift.NewParser())
-
-	// Scripting
-	reg.RegisterParser(bash.NewParser())
-	reg.RegisterParser(powershell.NewParser())
-
-	// Database
-	reg.RegisterParser(sql.NewParser())
-
-	// Web markup and styling
-	reg.RegisterParser(html.NewParser())
-	reg.RegisterParser(css.NewParser())
-
-	// Configuration files
-	reg.RegisterParser(config.NewJSONParser())
-	reg.RegisterParser(config.NewYAMLParser())
-	reg.RegisterParser(config.NewTOMLParser())
-	reg.RegisterParser(config.NewXMLParser())
-	reg.RegisterParser(config.NewMarkdownParser())
-
-	// Documentation
-	reg.RegisterParser(rst.NewParser())
-
-	// Initialize ignore matcher
-	ignoreMatcher, err := utils.NewIgnoreMatcher(projectPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create ignore matcher: %w", err)
-	}
-
-	indexer := &Indexer{
-		projectPath:   projectPath,
-		parsers:       reg,
-		ignoreMatcher: ignoreMatcher,
-		logger:        logger,
-		config:        cfg,
-	}
-
-	return indexer, nil
+    if cfg == nil {
+        cfg = &Config{
+            IndexDir:    ".projectIndex",
+            WorkerCount: 4, // Default to 4 workers
+            BatchSize:   100,
+            ExcludePaths: []string{".git", "node_modules", "vendor"},
+            IncludeExts: map[string]bool{
+                ".go": true, ".py": true, ".ts": true, ".tsx": true,
+                ".js": true, ".jsx": true, ".java": true, ".cs": true,
+                ".php": true, ".rb": true, ".rs": true, ".kt": true,
+                ".swift": true, ".c": true, ".cpp": true, ".cc": true,
+                ".sh": true, ".sql": true, ".html": true, ".css": true,
+                ".json": true, ".yaml": true, ".yml": true, ".toml": true,
+                ".xml": true, ".md": true, ".rst": true,
+            },
+        }
+    }
+    
+    logger := utils.NewLogger("[Indexer]")
+    
+    // Create index directory
+    indexDir := filepath.Join(projectPath, cfg.IndexDir)
+    if err := utils.EnsureDir(indexDir); err != nil {
+        return nil, fmt.Errorf("failed to create index directory: %w", err)
+    }
+    
+    // Open database
+    dbPath := filepath.Join(indexDir, "index_test.db")
+    dbManager, err := database.NewManager(dbPath, logger)
+    if err != nil {
+        return nil, fmt.Errorf("failed to open database: %w", err)
+    }
+    
+    grammarManager := parsing.NewGrammarManager()
+    astProvider := parsing.NewASTProvider(grammarManager)
+    queryEngine := parsing.NewQueryEngine(grammarManager)
+    
+    ignoreMatcher, err := utils.NewIgnoreMatcher(projectPath)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create ignore matcher: %w", err)
+    }
+    
+    indexer := &Indexer{
+        projectPath:    projectPath,
+        dbManager:      dbManager,
+        ignoreMatcher:  ignoreMatcher,
+        logger:         logger,
+        config:         *cfg,
+        grammarManager: grammarManager,
+        astProvider:    astProvider,
+        queryEngine:    queryEngine,
+        extractors:     make(map[string]Extractor),
+    }
+    
+    indexer.registerExtractors()
+    
+    return indexer, nil
 }
 
-// Initialize initializes the indexer and database
+func (idx *Indexer) registerExtractors() {
+    idx.extractors["go"] = extractors.NewGoExtractor(idx.queryEngine)
+    idx.extractors["python"] = extractors.NewPythonExtractor(idx.queryEngine)
+    // TODO: Register other language extractors
+}
+
+// Initialize initializes the indexer and database (now part of NewIndexer)
 func (idx *Indexer) Initialize() error {
-	idx.logger.Info("Initializing indexer for project:", idx.projectPath)
-
-	// Create index directory
-	indexDir := filepath.Join(idx.projectPath, idx.config.IndexDir)
-	if err := utils.EnsureDir(indexDir); err != nil {
-		return fmt.Errorf("failed to create index directory: %w", err)
-	}
-
-	// Open database
-	dbPath := filepath.Join(indexDir, "index_test.db") // Changed from index.db
-	db, err := database.NewManager(dbPath, idx.logger) // Pass idx.logger here
-	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
-	}
-	idx.db = db
-
-	// Get or create project
-	projectName := filepath.Base(idx.projectPath)
-	project, err := idx.db.GetProject(idx.projectPath)
-	if err != nil {
-		return fmt.Errorf("failed to get project: %w", err)
-	}
-
-	if project == nil {
-		// Create new project
-		project = &model.Project{
-			Path:          idx.projectPath,
-			Name:          projectName,
-			LanguageStats: make(map[string]int), // Initialize empty map
-			CreatedAt:     time.Now(),
-			LastIndexed:   time.Time{}, // Initialize to zero time
-		}
-
-		if err := idx.db.CreateProject(project); err != nil {
-			return fmt.Errorf("failed to create project: %w", err)
-		}
-		idx.project = project // Update idx.project with the newly created project (which now has an ID)
-
-		idx.logger.Info("Created new project:", projectName)
-	} else {
-		// Ensure LanguageStats is not nil if loaded from DB
-		if project.LanguageStats == nil {
-			project.LanguageStats = make(map[string]int)
-		}
-		idx.logger.Info("Loaded existing project:", projectName)
-	}
-
-	idx.project = project
-	idx.logger.Debug("Initialized project with ID:", idx.project.ID)
-
-	// Initialize AI helpers
-	idx.contextExtractor = ai.NewContextExtractor(idx.db)
-	idx.impactAnalyzer = ai.NewImpactAnalyzer(idx.db)
-	idx.metricsCalc = ai.NewMetricsCalculator(idx.db)
-	idx.snippetExtractor = ai.NewSnippetExtractor(idx.db)
-	idx.usageAnalyzer = ai.NewUsageAnalyzer(idx.db)
-	idx.changeTracker = ai.NewChangeTracker(idx.db)
-	idx.depGraphBuilder = ai.NewDependencyGraphBuilder(idx.db)
-	idx.typeValidator = ai.NewTypeValidator(idx.db)
-
-	return nil
+    idx.logger.Info("Initializing indexer for project:", idx.projectPath)
+    
+    // Get or create project
+    projectName := filepath.Base(idx.projectPath)
+    project, err := idx.dbManager.GetProject(idx.projectPath)
+    if err != nil {
+        return fmt.Errorf("failed to get project: %w", err)
+    }
+    
+    if project == nil {
+        // Create new project
+        project = &model.Project{
+            Path:          idx.projectPath,
+            Name:          projectName,
+            LanguageStats: make(map[string]int), // Initialize empty map
+            CreatedAt:     time.Now(),
+            LastIndexed:   time.Time{}, // Initialize to zero time
+        }
+        
+        if err := idx.dbManager.CreateProject(project); err != nil {
+            return fmt.Errorf("failed to create project: %w", err)
+        }
+        idx.project = project // Update idx.project with the newly created project (which now has an ID)
+        
+        idx.logger.Info("Created new project:", projectName)
+    } else {
+        // Ensure LanguageStats is not nil if loaded from DB
+        if project.LanguageStats == nil {
+            project.LanguageStats = make(map[string]int)
+        }
+        idx.logger.Info("Loaded existing project:", projectName)
+    }
+    
+    idx.project = project
+    idx.logger.Debug("Initialized project with ID:", idx.project.ID)
+    
+    // Initialize AI helpers
+    idx.contextExtractor = ai.NewContextExtractor(idx.dbManager)
+    idx.impactAnalyzer = ai.NewImpactAnalyzer(idx.dbManager)
+    idx.metricsCalc = ai.NewMetricsCalculator(idx.dbManager)
+    idx.snippetExtractor = ai.NewSnippetExtractor(idx.dbManager)
+    idx.usageAnalyzer = ai.NewUsageAnalyzer(idx.dbManager)
+    idx.changeTracker = ai.NewChangeTracker(idx.dbManager)
+    idx.depGraphBuilder = ai.NewDependencyGraphBuilder(idx.dbManager)
+    idx.typeValidator = ai.NewTypeValidator(idx.dbManager)
+    
+    return nil
 }
 
 // Close closes the indexer and releases resources
 func (idx *Indexer) Close() error {
-	if idx.db != nil {
-		err := idx.db.Close()
-		idx.db = nil // Set db to nil after closing
-		return err
-	}
-	return nil
+    if idx.dbManager != nil {
+        err := idx.dbManager.Close()
+        idx.dbManager = nil // Set db to nil after closing
+        return err
+    }
+    return nil
 }
 
 // IndexAll indexes all files in the project
 func (idx *Indexer) IndexAll() error {
-	if idx.db == nil {
-		return fmt.Errorf("indexer is closed")
-	}
-	idx.logger.Info("Starting full index of project")
-	startTime := time.Now()
-
-	// Scan for files
-	files, err := idx.scanFiles()
-	if err != nil {
-		return fmt.Errorf("failed to scan files: %w", err)
-	}
-
-	idx.logger.Infof("Found %d files to index", len(files))
-
-	// Index files concurrently
-	if err := idx.indexFiles(files); err != nil {
-		return fmt.Errorf("failed to index files: %w", err)
-	}
-
-	// Update project stats
-	idx.project.LastIndexed = time.Now()
-	// Recalculate language stats
-	allFiles, err := idx.db.GetAllFilesForProject(idx.project.ID)
-	if err != nil {
-		return fmt.Errorf("failed to get all files for language stats: %w", err)
-	}
-	newLanguageStats := make(map[string]int)
-	for _, file := range allFiles {
-		newLanguageStats[file.Language]++
-	}
-	idx.project.LanguageStats = newLanguageStats
-
-	if err := idx.db.UpdateProject(idx.project); err != nil {
-		return fmt.Errorf("failed to update project: %w", err)
-	}
-
-	duration := time.Since(startTime)
-	idx.logger.Infof("Indexing completed in %v", duration)
-
-	return nil
+    if idx.dbManager == nil {
+        return fmt.Errorf("indexer is closed")
+    }
+    idx.logger.Info("Starting full index of project")
+    startTime := time.Now()
+    
+    // Scan for files
+    files := make(chan string, 100)
+    results := make(chan *indexResult, 100)
+    
+    var wg sync.WaitGroup
+    
+    // Start workers
+    for i := 0; i < idx.config.WorkerCount; i++ {
+        wg.Add(1)
+        go idx.worker(files, results, &wg)
+    }
+    
+    // File scanner
+    go func() {
+        defer close(files)
+        filepath.Walk(idx.projectPath, func(path string, info os.FileInfo, err error) error {
+            if err != nil {
+                idx.logger.Errorf("Error walking file %s: %v", path, err)
+                return err
+            }
+            
+            if info.IsDir() {
+                // Check if should ignore this directory
+                relPath, _ := filepath.Rel(idx.projectPath, path)
+                if relPath != "." && idx.ignoreMatcher.ShouldIgnore(relPath) {
+                    idx.logger.Debugf("Ignoring directory: %s", relPath)
+                    return filepath.SkipDir
+                }
+                return nil
+            }
+            
+            // Check if should ignore this file
+            relPath, _ := filepath.Rel(idx.projectPath, path)
+            if idx.ignoreMatcher.ShouldIgnore(relPath) {
+                idx.logger.Debugf("Ignoring file: %s", relPath)
+                return nil
+            }
+            
+            if idx.shouldIndex(path) {
+                files <- path
+            }
+            
+            return nil
+        })
+    }()
+    
+    // Collector for results
+    go func() {
+        wg.Wait()
+        close(results)
+    }()
+    
+    // Process results
+    for result := range results {
+        if result.err != nil {
+            idx.logger.Errorf("Error indexing %s: %v", result.filePath, result.err)
+            continue
+        }
+        
+        if result.symbols != nil {
+            if err := idx.dbManager.SaveFileSymbols(result.symbols); err != nil {
+                idx.logger.Errorf("Error saving symbols from %s: %v", result.filePath, err)
+            }
+        }
+    }
+    
+    // Update project stats
+    idx.project.LastIndexed = time.Now()
+    allFiles, err := idx.dbManager.GetAllFilesForProject(idx.project.ID)
+    if err != nil {
+        return fmt.Errorf("failed to get all files for language stats: %w", err)
+    }
+    newLanguageStats := make(map[string]int)
+    for _, file := range allFiles {
+        newLanguageStats[file.Language]++
+    }
+    idx.project.LanguageStats = newLanguageStats
+    
+    if err := idx.dbManager.UpdateProject(idx.project); err != nil {
+        return fmt.Errorf("failed to update project: %w", err)
+    }
+    
+    duration := time.Since(startTime)
+    idx.logger.Infof("Indexing completed in %v", duration)
+    
+    return nil
 }
 
-// IndexFile indexes a single file
+type indexResult struct {
+    filePath string
+    symbols  *model.FileSymbols
+    err      error
+}
+
+func (idx *Indexer) worker(files <-chan string, results chan<- *indexResult, wg *sync.WaitGroup) {
+    defer wg.Done()
+    
+    for filePath := range files {
+        symbols, err := idx.indexFile(filePath)
+        results <- &indexResult{
+            filePath: filePath,
+            symbols:  symbols,
+            err:      err,
+        }
+    }
+}
+
+func (idx *Indexer) indexFile(filePath string) (*model.FileSymbols, error) {
+    // Determine language
+    language := idx.detectLanguage(filePath)
+    if language == "" {
+        return nil, fmt.Errorf("unsupported file type: %s", filePath)
+    }
+    
+    // Read file content
+    content, err := os.ReadFile(filePath)
+    if err != nil {
+        return nil, err
+    }
+    
+    // Parse
+    parseResult, err := idx.astProvider.Parse(language, content)
+    if err != nil {
+        return nil, err
+    }
+    defer parseResult.Close()
+    
+    // Extract symbols
+    extractor, exists := idx.extractors[language]
+    if !exists {
+        return nil, fmt.Errorf("no extractor for language: %s", language)
+    }
+    
+    symbols, err := extractor.ExtractAll(parseResult, filePath)
+    if err != nil {
+        return nil, err
+    }
+    
+    return symbols, nil
+}
+
+// IndexFile indexes a single file, making it accessible publicly
 func (idx *Indexer) IndexFile(filePath string) error {
-	// Make path relative to project
-	relPath, err := filepath.Rel(idx.projectPath, filePath)
-	if err != nil {
-		idx.logger.Errorf("Failed to get relative path for %s: %v", filePath, err)
-		return err
-	}
-
-	// Check if should ignore
-	if idx.ignoreMatcher.ShouldIgnore(relPath) {
-		idx.logger.Debugf("Ignoring file: %s", relPath)
-		return nil
-	}
-
-	// Check if we can parse this file
-	if _, err := idx.parsers.GetParserForFile(filePath); err != nil {
-		idx.logger.Debugf("Skipping unsupported file: %s", relPath)
-		return nil // Skip unsupported files silently
-	}
-
-	idx.logger.Debugf("Indexing file: %s", relPath)
-
-	// Get file info
-	fileInfo, err := os.Stat(filePath)
-	if err != nil {
-		idx.logger.Errorf("Failed to get file info for %s: %v", relPath, err)
-		return err
-	}
-
-	// Read file content
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		idx.logger.Errorf("Failed to read file content for %s: %v", relPath, err)
-		return err
-	}
-
-	// Calculate hash
-	hash := utils.HashBytes(content)
-
-	// Check if file has changed
-	existingFile, err := idx.db.GetFileByPath(idx.project.ID, relPath)
-	if err != nil {
-		idx.logger.Errorf("Failed to get existing file from DB for %s: %v", relPath, err)
-		return err
-	}
-
-	if existingFile != nil && existingFile.Hash == hash {
-		// File hasn't changed, skip
-		idx.logger.Debugf("File unchanged, skipping: %s", relPath)
-		return nil
-	}
-
-	// Parse file
-	parser, err := idx.parsers.GetParserForFile(filePath)
-	if err != nil {
-		idx.logger.Errorf("Failed to get parser for %s: %v", relPath, err)
-		return err
-	}
-
-	parseResult, err := parser.Parse(content, filePath)
-	if err != nil {
-		idx.logger.Warnf("Failed to parse %s: %v", relPath, err)
-		return nil // Don't fail on parse errors
-	}
-	idx.logger.Debugf("Parsed file %s, found %d symbols", relPath, len(parseResult.Symbols))
-
-	// Count lines
-	lines, _ := utils.CountLines(filePath)
-
-	// Save to database in transaction
-	err = idx.db.Transaction(func(tx *gosql.Tx) error {
-		// Save file
-		file := &model.File{
-			ProjectID:    idx.project.ID,
-			Path:         filePath,
-			RelativePath: relPath,
-			Language:     parser.Language(),
-			Size:         fileInfo.Size(),
-			LinesOfCode:  lines,
-			Hash:         hash,
-			LastModified: fileInfo.ModTime(),
-			LastIndexed:  time.Now(),
-		}
-
-		if existingFile != nil {
-			file.ID = existingFile.ID // Set the ID for update
-		}
-
-		if err := idx.db.SaveFile(file); err != nil { // Use idx.db directly
-			return fmt.Errorf("failed to save file %s: %w", relPath, err)
-		}
-
-		// Delete old symbols/imports for this file
-		if existingFile != nil {
-			idx.db.DeleteSymbolsByFile(file.ID) // Use idx.db directly
-			idx.db.DeleteImportsByFile(file.ID) // Use idx.db directly
-		}
-
-		// Save symbols
-		for _, symbol := range parseResult.Symbols {
-			symbol.File = file.Path // Set the file path for the symbol
-			symbol.ID = utils.GenerateID(symbol.File, symbol.Name, string(symbol.Kind), symbol.Range.Start.Line)
-			symbol.CreatedAt = time.Now()
-			symbol.UpdatedAt = time.Now()
-			symbol.Language = file.Language   // Populate Language from file
-			symbol.ContentHash = file.Hash    // Populate ContentHash from file
-			if symbol.Status == "" {
-				symbol.Status = model.StatusCompleted // Ensure status is set
-			}
-			if err := idx.db.SaveSymbol(symbol); err != nil { // Use idx.db directly
-				return fmt.Errorf("failed to save symbol %s in file %s: %w", symbol.Name, relPath, err)
-			}
-		}
-
-		// Save imports
-		for _, imp := range parseResult.Imports {
-			imp.FilePath = file.Path // Set the file path for the import
-			if err := idx.db.SaveImport(imp); err != nil { // Use idx.db directly
-				return fmt.Errorf("failed to save import %s in file %s: %w", imp.Path, relPath, err)
-			}
-		}
-
-		// Save relationships
-		for _, rel := range parseResult.Relationships {
-			rel.FilePath = file.Path // Set the file path for the relationship
-			if err := idx.db.SaveRelationship(rel); err != nil { // Use idx.db directly
-				return fmt.Errorf("failed to save relationship in file %s: %w", relPath, err)
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to save parse results: %w", err)
-	}
-
-	idx.logger.Debugf("Indexed file: %s (%d symbols, %d imports)",
-		relPath, len(parseResult.Symbols), len(parseResult.Imports))
-
-	return nil
+    fileSymbols, err := idx.indexFile(filePath)
+    if err != nil {
+        return err
+    }
+    if fileSymbols != nil {
+        return idx.dbManager.SaveFileSymbols(fileSymbols)
+    }
+    return nil
 }
 
-// scanFiles scans the project directory for files
-func (idx *Indexer) scanFiles() ([]string, error) {
-	var files []string
-
-	err := filepath.Walk(idx.projectPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			idx.logger.Errorf("Error walking file %s: %v", path, err)
-			return err
-		}
-
-		// Skip directories
-		if info.IsDir() {
-			// Check if should ignore this directory
-			relPath, _ := filepath.Rel(idx.projectPath, path)
-			if relPath != "." && idx.ignoreMatcher.ShouldIgnore(relPath) {
-				idx.logger.Debugf("Ignoring directory: %s", relPath)
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		// Check if should ignore this file
-		relPath, _ := filepath.Rel(idx.projectPath, path)
-		if idx.ignoreMatcher.ShouldIgnore(relPath) {
-			idx.logger.Debugf("Ignoring file: %s", relPath)
-			return nil
-		}
-
-		// Check if we can parse this file
-		if _, err := idx.parsers.GetParserForFile(path); err == nil {
-			files = append(files, path)
-		} else {
-			idx.logger.Debugf("No parser found for file: %s", relPath)
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to scan files: %w", err)
-	}
-
-	idx.logger.Infof("scanFiles found %d files", len(files))
-	return files, err
+// detectLanguage determines the language of a file based on its extension
+func (idx *Indexer) detectLanguage(filePath string) string {
+    ext := filepath.Ext(filePath)
+    
+    // Use a map for faster lookup
+    extToLang := map[string]string{
+        ".go":   "go",
+        ".py":   "python",
+        ".ts":   "typescript",
+        ".tsx":  "typescript",
+        ".js":   "javascript",
+        ".jsx":  "javascript",
+        ".java": "java",
+        ".cs":   "csharp",
+        ".php":  "php",
+        ".rb":   "ruby",
+        ".rs":   "rust",
+        ".kt":   "kotlin",
+        ".swift": "swift",
+        ".c":    "c",
+        ".cpp":  "cpp",
+        ".cc":   "cpp",
+        ".sh":   "bash",
+        ".sql":  "sql",
+        ".html": "html",
+        ".css":  "css",
+        ".json": "json",
+        ".yaml": "yaml",
+        ".yml":  "yaml",
+        ".toml": "toml",
+        ".xml":  "xml",
+        ".md":   "markdown",
+        ".rst":  "rst",
+    }
+    
+    if lang, ok := extToLang[ext]; ok {
+        return lang
+    }
+    return ""
 }
 
-// indexFiles indexes multiple files synchronously
-func (idx *Indexer) indexFiles(files []string) error {
-	idx.logger.Info("Starting synchronous file indexing")
-
-	for _, filePath := range files {
-		if err := idx.IndexFile(filePath); err != nil {
-			idx.logger.Errorf("Failed to index %s: %v", filePath, err)
-			// Continue to next file, or return error if strict
-			// For now, we'll continue to process other files
-		}
-	}
-
-	idx.logger.Info("Synchronous file indexing completed")
-	return nil
+// shouldIndex checks if a file should be indexed based on configuration
+func (idx *Indexer) shouldIndex(path string) bool {
+    // Check for excluded paths
+    for _, exclude := range idx.config.ExcludePaths {
+        if matched, _ := filepath.Match(idx.projectPath + string(filepath.Separator) + exclude, path); matched {
+            return false
+        }
+    }
+    
+    ext := filepath.Ext(path)
+    if include, ok := idx.config.IncludeExts[ext]; ok {
+        return include
+    }
+    return false // Default to not indexing if extension is not explicitly included
 }
 
 // SearchSymbols searches for symbols
 func (idx *Indexer) SearchSymbols(opts model.SearchOptions) ([]*model.Symbol, error) {
-	return idx.db.SearchSymbols(opts)
+	return idx.dbManager.SearchSymbols(opts)
 }
 
 // GetFileStructure returns the structure of a file
 func (idx *Indexer) GetFileStructure(filePath string) (*model.ParseResult, error) {
-	relPath, err := filepath.Rel(idx.projectPath, filePath)
-	if err != nil {
-		return nil, err
-	}
-
-	file, err := idx.db.GetFileByPath(idx.project.ID, relPath)
-	if err != nil {
-		return nil, err
-	}
-	if file == nil {
-		return nil, fmt.Errorf("file not found: %s", relPath)
-	}
-
-	symbols, err := idx.db.GetSymbolsByFile(file.Path)
-	if err != nil {
-		return nil, err
-	}
-
-	imports, err := idx.db.GetImportsByFile(file.Path)
-	if err != nil {
-		return nil, err
-	}
-
-	return &model.ParseResult{
-		FilePath: filePath,
-		Language: file.Language,
-		Symbols:  symbols,
-		Imports:  imports,
-	}, nil
+    relPath, err := filepath.Rel(idx.projectPath, filePath)
+    if err != nil {
+        return nil, err
+    }
+    
+    file, err := idx.dbManager.GetFileByPath(idx.project.ID, relPath)
+    if err != nil {
+        return nil, err
+    }
+    if file == nil {
+        return nil, fmt.Errorf("file not found: %s", relPath)
+    }
+    
+    symbols, err := idx.dbManager.GetSymbolsByFile(file.Path)
+    if err != nil {
+        return nil, err
+    }
+    
+    imports, err := idx.dbManager.GetImportsByFile(file.Path)
+    if err != nil {
+        return nil, err
+    }
+    
+    return &model.ParseResult{
+        FilePath: filePath,
+        Language: file.Language,
+        Symbols:  symbols,
+        Imports:  imports,
+    }, nil
 }
 
 // GetProjectOverview returns project overview
 func (idx *Indexer) GetProjectOverview() (*model.ProjectOverview, error) {
-	totalFiles := 0
-	files, err := idx.db.GetAllFilesForProject(idx.project.ID)
-	if err != nil {
-		return nil, err
-	}
-	totalFiles = len(files)
-
-	totalSymbols := 0
-	// TODO: Implement GetTotalSymbols in database.Manager
-	// For now, we'll just count symbols from files if available
-	for _, file := range files {
-		symbols, err := idx.db.GetSymbolsByFile(file.Path)
-		if err != nil {
-			idx.logger.Warnf("Failed to get symbols for file %s: %v", file.Path, err)
-			continue
-		}
-		totalSymbols += len(symbols)
-	}
-
-	return &model.ProjectOverview{
-		Project:       idx.project,
-		TotalFiles:    totalFiles,
-		TotalSymbols:  totalSymbols,
-		LanguageStats: idx.project.LanguageStats,
-	}, nil
+    totalFiles := 0
+    files, err := idx.dbManager.GetAllFilesForProject(idx.project.ID)
+    if err != nil {
+        return nil, err
+    }
+    totalFiles = len(files)
+    
+    totalSymbols := 0
+    // TODO: Implement GetTotalSymbols in database.Manager
+    // For now, we'll just count symbols from files if available
+    for _, file := range files {
+        symbols, err := idx.dbManager.GetSymbolsByFile(file.Path)
+        if err != nil {
+            idx.logger.Warnf("Failed to get symbols for file %s: %v", file.Path, err)
+            continue
+        }
+        totalSymbols += len(symbols)
+    }
+    
+    return &model.ProjectOverview{
+        Project:       idx.project,
+        TotalFiles:    totalFiles,
+        TotalSymbols:  totalSymbols,
+        LanguageStats: idx.project.LanguageStats,
+    }, nil
 }
 
 // Watch starts watching for file changes and auto-indexes
@@ -567,59 +499,59 @@ func (idx *Indexer) StopWatch() error {
 
 // GetSymbolDetails returns detailed information about a symbol
 func (idx *Indexer) GetSymbolDetails(symbolName string) (*model.SymbolDetails, error) {
-	symbol, err := idx.db.GetSymbolByName(symbolName)
-	if err != nil {
-		return nil, err
-	}
-	if symbol == nil {
-		return nil, fmt.Errorf("symbol not found: %s", symbolName)
-	}
-
-	// file, err := idx.db.GetFile(symbol.FileID) // FileID is not directly available in model.Symbol
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	references, err := idx.db.GetReferencesBySymbol(symbol.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	// relationships, err := idx.db.GetRelationshipsForSymbol(symbol.ID) // This method does not exist in database.Manager
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	return &model.SymbolDetails{
-		Symbol:        symbol,
-		// File:          file,
-		References:    references,
-		// Relationships: relationships,
-		Documentation: symbol.Documentation,
-	}, nil
+    symbol, err := idx.dbManager.GetSymbolByName(symbolName)
+    if err != nil {
+        return nil, err
+    }
+    if symbol == nil {
+        return nil, fmt.Errorf("symbol not found: %s", symbolName)
+    }
+    
+    // file, err := idx.dbManager.GetFile(symbol.FileID) // FileID is not directly available in model.Symbol
+    // if err != nil {
+    // 	return nil, err
+    // }
+    
+    references, err := idx.dbManager.GetReferencesBySymbol(symbol.ID)
+    if err != nil {
+        return nil, err
+    }
+    
+    // relationships, err := idx.dbManager.GetRelationshipsForSymbol(symbol.ID) // This method does not exist in database.Manager
+    // if err != nil {
+    // 	return nil, err
+    // }
+    
+    return &model.SymbolDetails{
+        Symbol:        symbol,
+        // File:          file,
+        References:    references,
+        // Relationships: relationships,
+        Documentation: symbol.Documentation,
+    }, nil
 }
 
 // FindReferences finds all references to a symbol
 func (idx *Indexer) FindReferences(symbolName string) ([]*model.Reference, error) {
-	symbol, err := idx.db.GetSymbolByName(symbolName)
-	if err != nil {
-		return nil, err
-	}
-	if symbol == nil {
-		return nil, fmt.Errorf("symbol not found: %s", symbolName)
-	}
-
-	return idx.db.GetReferencesBySymbol(symbol.ID)
+    symbol, err := idx.dbManager.GetSymbolByName(symbolName)
+    if err != nil {
+        return nil, err
+    }
+    if symbol == nil {
+        return nil, fmt.Errorf("symbol not found: %s", symbolName)
+    }
+    
+    return idx.dbManager.GetReferencesBySymbol(symbol.ID)
 }
 
-// GetDependencies is deprecated. Use BuildDependencyGraph from the AI helpers instead.
-// func (idx *Indexer) GetDependencies(filePath string) (*model.DependencyGraph, error) {
-// 	// ... (old implementation removed) ...
-// }
+// GetDependencies gets all dependencies for a symbol
+func (idx *Indexer) GetDependencies(symbolName string) ([]*model.Symbol, error) {
+	return idx.depGraphBuilder.GetDependenciesFor(symbolName)
+}
 
 // GetAllFiles returns all indexed files
 func (idx *Indexer) GetAllFiles() ([]*model.File, error) {
-	return idx.db.GetAllFilesForProject(idx.project.ID)
+    return idx.dbManager.GetAllFilesForProject(idx.project.ID)
 }
 
 // AI Helper Methods
@@ -636,38 +568,38 @@ func (idx *Indexer) AnalyzeChangeImpact(symbolName string) (*model.ChangeImpact,
 
 // GetCodeMetrics calculates code quality metrics
 func (idx *Indexer) GetCodeMetrics(symbolName string) (*model.CodeMetrics, error) {
-	symbol, err := idx.db.GetSymbolByName(symbolName)
-	if err != nil {
-		return nil, err
-	}
-	if symbol == nil {
-		return nil, fmt.Errorf("symbol not found: %s", symbolName)
-	}
-	return idx.metricsCalc.CalculateMetrics(symbol)
+    symbol, err := idx.dbManager.GetSymbolByName(symbolName)
+    if err != nil {
+        return nil, err
+    }
+    if symbol == nil {
+        return nil, fmt.Errorf("symbol not found: %s", symbolName)
+    }
+    return idx.metricsCalc.CalculateMetrics(symbol)
 }
 
 // ExtractSmartSnippet extracts a self-contained code snippet
 func (idx *Indexer) ExtractSmartSnippet(symbolName string) (*model.SmartSnippet, error) {
-	symbol, err := idx.db.GetSymbolByName(symbolName)
-	if err != nil {
-		return nil, err
-	}
-	if symbol == nil {
-		return nil, fmt.Errorf("symbol not found: %s", symbolName)
-	}
-	return idx.snippetExtractor.ExtractSmartSnippet(symbol, false)
+    symbol, err := idx.dbManager.GetSymbolByName(symbolName)
+    if err != nil {
+        return nil, err
+    }
+    if symbol == nil {
+        return nil, fmt.Errorf("symbol not found: %s", symbolName)
+    }
+    return idx.snippetExtractor.ExtractSmartSnippet(symbol, false)
 }
 
 // GetUsageStatistics gets usage statistics for a symbol
 func (idx *Indexer) GetUsageStatistics(symbolName string) (*model.SymbolUsageStats, error) {
-	symbol, err := idx.db.GetSymbolByName(symbolName)
-	if err != nil {
-		return nil, err
-	}
-	if symbol == nil {
-		return nil, fmt.Errorf("symbol not found: %s", symbolName)
-	}
-	return idx.usageAnalyzer.AnalyzeUsage(symbol)
+    symbol, err := idx.dbManager.GetSymbolByName(symbolName)
+    if err != nil {
+        return nil, err
+    }
+    if symbol == nil {
+        return nil, fmt.Errorf("symbol not found: %s", symbolName)
+    }
+    return idx.usageAnalyzer.AnalyzeUsage(symbol)
 }
 
 // SuggestRefactorings suggests refactoring opportunities
@@ -698,7 +630,7 @@ func (idx *Indexer) ValidateChanges(changes []*model.Change) (*model.ValidationR
 }
 
 // GenerateAutoFixes generates automatic fixes for a change
-func (idx *Indexer) GenerateAutoFixes(change *model.Change) ([]*model.AutoFixSuggestion, error) {
+func (idx *Indexer) es(change *model.Change) ([]*model.AutoFixSuggestion, error) {
 	return idx.changeTracker.GenerateAutoFixes(change)
 }
 
@@ -707,11 +639,6 @@ func (idx *Indexer) GenerateAutoFixes(change *model.Change) ([]*model.AutoFixSug
 // BuildDependencyGraph builds a dependency graph for a symbol
 func (idx *Indexer) BuildDependencyGraph(symbolName string, maxDepth int) (*model.DependencyGraph, error) {
 	return idx.depGraphBuilder.BuildSymbolDependencyGraph(symbolName, maxDepth)
-}
-
-// GetDependencies gets all dependencies for a symbol
-func (idx *Indexer) GetDependencies(symbolName string) ([]*model.Symbol, error) {
-	return idx.depGraphBuilder.GetDependenciesFor(symbolName)
 }
 
 // GetDependents gets all symbols that depend on a symbol
@@ -741,12 +668,23 @@ func (idx *Indexer) CheckMethodExists(typeName, methodName string) (*model.Missi
 	return idx.typeValidator.CheckMethodExists(typeName, methodName, fmt.Sprintf("%d", idx.project.ID))
 }
 
+func (idx *Indexer) GetProject() *model.Project {
+    return idx.project
+}
+
+// IndexFile indexes a single file, making it accessible publicly
+func (idx *Indexer) IndexFile(filePath string) error {
+    fileSymbols, err := idx.indexFile(filePath)
+    if err != nil {
+        return err
+    }
+    if fileSymbols != nil {
+        return idx.dbManager.SaveFileSymbols(fileSymbols)
+    }
+    return nil
+}
+
 // CalculateTypeSafetyScore calculates type safety score for a file
 func (idx *Indexer) CalculateTypeSafetyScore(filePath string) (*model.TypeSafetyScore, error) {
 	return idx.typeValidator.CalculateTypeSafetyScore(filePath)
-}
-
-// GetProject returns the current project
-func (idx *Indexer) GetProject() *model.Project {
-	return idx.project
 }

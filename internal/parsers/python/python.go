@@ -81,26 +81,23 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 					log.Printf("DEBUG: Docstring: Single line ended at line %d, content: '%s'", lineNumber, pendingDocstring)
 					inDocstring = false
 					docstringLines = []string{}
-				} else {
-					log.Printf("DEBUG: Docstring: Started at line %d, marker: %s, content: %v", lineNumber, docstringMarker, docstringLines)
-				}
-			} else if strings.Contains(trimmed, docstringMarker) {
-				docstringLines = append(docstringLines, strings.TrimSuffix(trimmed, docstringMarker))
-				pendingDocstring = strings.TrimSpace(strings.Join(docstringLines, "\n")) // Finalize pendingDocstring
-				log.Printf("DEBUG: Docstring: Multi-line ended at line %d, content: '%s'", lineNumber, pendingDocstring)
-				inDocstring = false
-				docstringLines = []string{}
-			}
-			// After a docstring ends, ensure pendingDocstring is set
-			if !inDocstring {
-				if len(docstringLines) > 0 { // Only finalize if there were lines
-					pendingDocstring = strings.TrimSpace(strings.Join(docstringLines, "\n"))
-					docstringLines = []string{} // Clear docstringLines after finalizing pendingDocstring
-				}
-			}
-			continue
-		}
-
+				                } else {
+				                    log.Printf("DEBUG: Docstring: Started at line %d, marker: %s, content: %v", lineNumber, docstringMarker, docstringLines)
+				                }
+				            } else if strings.Contains(trimmed, docstringMarker) {
+				                docstringLines = append(docstringLines, strings.TrimSuffix(trimmed, docstringMarker))
+				                pendingDocstring = strings.TrimSpace(strings.Join(docstringLines, "\n")) // Finalize pendingDocstring
+				                log.Printf("DEBUG: Docstring: Multi-line ended at line %d, content: '%s'", lineNumber, pendingDocstring)
+				                inDocstring = false
+				                docstringLines = []string{}
+				            }
+				            // After a docstring ends, ensure pendingDocstring is set
+				            if !inDocstring && len(docstringLines) > 0 { // Only finalize if there were lines
+				                pendingDocstring = strings.TrimSpace(strings.Join(docstringLines, "\n"))
+				                docstringLines = []string{} // Clear docstringLines after finalizing pendingDocstring
+				            }
+				            continue
+				        }
 		if inDocstring {
 			docstringLines = append(docstringLines, trimmed)
 			log.Printf("DEBUG: Docstring: Appending line %d: %s", lineNumber, trimmed)
@@ -110,9 +107,7 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 		// If we are not in a docstring and there's a pending docstring, and the current line is not a definition, discard it.
 		// This handles cases where a docstring is followed by blank lines or comments before a definition.
 		if pendingDocstring != "" && trimmed != "" && !strings.HasPrefix(trimmed, "#") &&
-			!classRegex.MatchString(trimmed) && !functionRegex.MatchString(trimmed) &&
-			!importRegex.MatchString(trimmed) && !fromImportRegex.MatchString(trimmed) &&
-			!decoratorRegex.MatchString(trimmed) && !varRegex.MatchString(trimmed) {
+			!classRegex.MatchString(trimmed) && !functionRegex.MatchString(trimmed) { // Only check for class/function definitions
 			log.Printf("DEBUG: Discarding pending docstring at line %d as no definition followed: '%s'", lineNumber, pendingDocstring)
 			pendingDocstring = ""
 			docstringLines = []string{}
@@ -182,8 +177,6 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 			symbol.Metadata["indent"] = strconv.Itoa(indent)
 			parentStack = append(parentStack, symbol)
 			log.Printf("DEBUG: Class Symbol: %s, Doc: '%s', parentStack size: %d", className, pendingDocstring, len(parentStack))
-			pendingDocstring = "" // Clear after assignment
-			docstringLines = []string{}
 			continue
 		}
 
@@ -245,8 +238,6 @@ func (p *Parser) Parse(content []byte, filePath string) (*parsing.ParseResult, e
 			result.Symbols = append(result.Symbols, symbol)
 			parentStack = append(parentStack, symbol)
 			log.Printf("DEBUG: Function/Method Symbol: %s, Kind: %s, Doc: '%s', parentStack size: %d", funcName, symbolKind, pendingDocstring, len(parentStack))
-			pendingDocstring = "" // Clear after assignment
-			docstringLines = []string{}
 			continue
 		}
 
